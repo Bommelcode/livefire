@@ -7,14 +7,30 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor
 from PyQt6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QHeaderView, QAbstractItemView,
+    QStyledItemDelegate, QStyle,
 )
 
 from ..cues import Cue, CueType, ContinueMode
 from ..workspace import Workspace
-from .style import STATE_COLORS, ACCENT, TEXT_DIM
+from .style import STATE_COLORS, ACCENT, TEXT_DIM, tint_for_row
 
 
 COLUMNS = ["Nr", "Type", "Naam", "Duur", "Continue", "Status"]
+
+
+class _CueRowDelegate(QStyledItemDelegate):
+    """Schildert zelf de per-cel BackgroundRole-brush. Nodig omdat Qt's
+    stylesheet voor ``QTreeWidget::item`` (padding/border) normaal
+    ``QTreeWidgetItem.setBackground()`` negeert."""
+
+    def paint(self, painter, option, index):
+        bg = index.data(Qt.ItemDataRole.BackgroundRole)
+        if isinstance(bg, QBrush) and bg.color().alpha() > 0:
+            if not (option.state & QStyle.StateFlag.State_Selected):
+                painter.save()
+                painter.fillRect(option.rect, bg)
+                painter.restore()
+        super().paint(painter, option, index)
 
 
 def _fmt_duration(sec: float) -> str:
@@ -56,6 +72,8 @@ class CueListWidget(QTreeWidget):
         self.setColumnWidth(4, 120)
         self.setColumnWidth(5, 80)
 
+        self.setItemDelegate(_CueRowDelegate(self))
+
         self.itemSelectionChanged.connect(self._on_selection)
         self.itemDoubleClicked.connect(self._on_double_click)
 
@@ -92,12 +110,14 @@ class CueListWidget(QTreeWidget):
         # Kleur status-cel
         color = STATE_COLORS.get(cue.state, QColor("#888"))
         item.setForeground(5, QBrush(color))
-        # Cue-color tag op nummer-cel
+        # Cue-color tag: volle kleur als balk op nummer-kolom, lichte tint over
+        # de rest zodat de regel direct als gekleurde cue herkenbaar is.
         if cue.color:
-            try:
-                item.setForeground(0, QBrush(QColor(cue.color)))
-            except Exception:
-                pass
+            full = QBrush(QColor(cue.color))
+            tint = QBrush(tint_for_row(cue.color))
+            item.setBackground(0, full)
+            for col in range(1, len(COLUMNS)):
+                item.setBackground(col, tint)
         return item
 
     def update_cue(self, cue_id: str) -> None:

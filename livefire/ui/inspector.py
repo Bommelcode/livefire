@@ -4,8 +4,8 @@ niet samengedrukt worden (zelfde les als v0.2)."""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import Qt, pyqtSignal, QSize
+from PyQt6.QtGui import QFont, QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QDoubleSpinBox, QSpinBox,
     QComboBox, QPlainTextEdit, QGroupBox, QScrollArea, QPushButton, QFileDialog,
@@ -14,6 +14,17 @@ from PyQt6.QtWidgets import (
 
 from ..cues import Cue, CueType, ContinueMode
 from ..workspace import Workspace
+from .style import CUE_COLORS
+
+
+def _swatch_icon(hex_color: str, size: int = 14) -> QIcon:
+    """Maak een vierkant kleur-swatch als QIcon voor de dropdown."""
+    pm = QPixmap(size, size)
+    if hex_color:
+        pm.fill(QColor(hex_color))
+    else:
+        pm.fill(QColor(0, 0, 0, 0))  # transparant voor "Geen"
+    return QIcon(pm)
 
 
 class InspectorWidget(QWidget):
@@ -56,12 +67,14 @@ class InspectorWidget(QWidget):
         self.ed_name = QLineEdit()
         self.cb_type = QComboBox()
         self.cb_type.addItems(CueType.ALL)
-        self.ed_color = QLineEdit()
-        self.ed_color.setPlaceholderText("#3aa2e6 of leeg")
+        self.cb_color = QComboBox()
+        self.cb_color.setIconSize(QSize(14, 14))
+        for label, hex_color in CUE_COLORS:
+            self.cb_color.addItem(_swatch_icon(hex_color), label, hex_color)
         form.addRow("Nummer", self.ed_number)
         form.addRow("Type", self.cb_type)
         form.addRow("Naam", self.ed_name)
-        form.addRow("Kleur", self.ed_color)
+        form.addRow("Kleur", self.cb_color)
         lay.addWidget(grp_basic)
 
         # ---- Timing --------------------------------------------------------
@@ -132,8 +145,7 @@ class InspectorWidget(QWidget):
         lay.addStretch(1)
 
         # ---- wire changes --------------------------------------------------
-        for w in (self.ed_number, self.ed_name, self.ed_color, self.ed_path,
-                  self.ed_notes):
+        for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes):
             if isinstance(w, QPlainTextEdit):
                 w.textChanged.connect(self._on_any_change)
             else:
@@ -145,6 +157,7 @@ class InspectorWidget(QWidget):
         self.cb_type.currentTextChanged.connect(self._on_type_change)
         self.cb_continue.currentIndexChanged.connect(self._on_any_change)
         self.cb_target.currentIndexChanged.connect(self._on_any_change)
+        self.cb_color.currentIndexChanged.connect(self._on_any_change)
         self.chk_fade_stops.toggled.connect(self._on_any_change)
 
         self.set_cue(None)
@@ -203,7 +216,7 @@ class InspectorWidget(QWidget):
         self.ed_number.setText(cue.cue_number)
         self.ed_name.setText(cue.name)
         self.cb_type.setCurrentText(cue.cue_type)
-        self.ed_color.setText(cue.color)
+        self._select_color(cue.color)
 
         self.sp_pre.setValue(cue.pre_wait)
         self.sp_dur.setValue(cue.duration)
@@ -248,7 +261,7 @@ class InspectorWidget(QWidget):
         c.cue_number = self.ed_number.text()
         c.name = self.ed_name.text()
         c.cue_type = self.cb_type.currentText()
-        c.color = self.ed_color.text().strip()
+        c.color = self.cb_color.currentData() or ""
         c.pre_wait = self.sp_pre.value()
         c.duration = self.sp_dur.value()
         c.post_wait = self.sp_post.value()
@@ -265,6 +278,21 @@ class InspectorWidget(QWidget):
         c.notes = self.ed_notes.toPlainText()
         self.workspace.dirty = True
         self.cue_changed.emit(c)
+
+    def _select_color(self, hex_color: str) -> None:
+        """Selecteer de juiste preset in cb_color. Als hex_color geen preset is
+        (bv. geërfd uit oudere workspace), voeg hem tijdelijk toe als 'Aangepast'."""
+        idx = self.cb_color.findData(hex_color)
+        if idx < 0 and hex_color:
+            self.cb_color.addItem(
+                _swatch_icon(hex_color),
+                f"Aangepast ({hex_color})",
+                hex_color,
+            )
+            idx = self.cb_color.count() - 1
+        if idx < 0:
+            idx = 0  # "Geen"
+        self.cb_color.setCurrentIndex(idx)
 
     def _browse_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
