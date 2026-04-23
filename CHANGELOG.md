@@ -3,6 +3,16 @@
 Alle noemenswaardige wijzigingen aan dit project. Format volgens
 [Keep a Changelog](https://keepachangelog.com/nl/1.1.0/).
 
+## [Unreleased]
+
+### Gewijzigd
+- Inspector-kleurveld is nu een dropdown met preset cue-kleuren (QLab-stijl)
+  inclusief kleur-swatches. Niet-preset hex-waarden uit oudere workspaces
+  blijven bewaard als "Aangepast".
+- Cue-kleur is in de cuelist nu zichtbaar als gekleurde balk op de
+  nummer-kolom plus subtiele row-tint, in plaats van alleen een (nauwelijks
+  zichtbare) tekstkleur op het nummer.
+
 ## [0.3.0] — 2026-04-23
 
 ### Gewijzigd

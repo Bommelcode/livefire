@@ -26,6 +26,30 @@ STATE_COLORS = {
 }
 
 
+# QLab-geïnspireerde cue-kleuren, afgestemd op ons donkere thema.
+# (label, hex). Volgorde bepaalt de dropdown in de inspector.
+CUE_COLORS: list[tuple[str, str]] = [
+    ("Geen",    ""),
+    ("Rood",    "#c0392b"),
+    ("Oranje",  "#d35400"),
+    ("Geel",    "#c9a227"),
+    ("Groen",   "#2e8b57"),
+    ("Cyaan",   "#2aa198"),
+    ("Blauw",   "#2980b9"),
+    ("Paars",   "#7d3c98"),
+    ("Roze",    "#c71585"),
+    ("Grijs",   "#606060"),
+]
+
+
+def tint_for_row(hex_color: str, alpha: int = 110) -> QColor:
+    """Geef een semi-transparante variant van hex_color terug voor row-backgrounds.
+    Donker thema: alpha ~110/255 geeft duidelijk zichtbaar maar niet schreeuwend."""
+    c = QColor(hex_color)
+    c.setAlpha(alpha)
+    return c
+
+
 STYLESHEET = f"""
 QMainWindow, QWidget {{
     background-color: {BG_DARK};
