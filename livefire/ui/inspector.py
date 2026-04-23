@@ -110,10 +110,14 @@ class InspectorWidget(QWidget):
         self.sp_loops.setSpecialValueText("∞")
         self.sp_start = self._spin_seconds()
         self.sp_end = self._spin_seconds()
+        self.sp_fade_in = self._spin_seconds(max_val=600.0)
+        self.sp_fade_out = self._spin_seconds(max_val=600.0)
         al.addRow("Volume", self.sp_volume)
         al.addRow("Loops (0 = ∞)", self.sp_loops)
         al.addRow("Start-offset (s)", self.sp_start)
         al.addRow("Eind-offset (s)", self.sp_end)
+        al.addRow("Fade-in (s)", self.sp_fade_in)
+        al.addRow("Fade-out (s)", self.sp_fade_out)
         lay.addWidget(self.grp_audio)
 
         # ---- Wait ----------------------------------------------------------
@@ -151,7 +155,8 @@ class InspectorWidget(QWidget):
             else:
                 w.textChanged.connect(self._on_any_change)
         for w in (self.sp_pre, self.sp_dur, self.sp_post, self.sp_volume,
-                  self.sp_start, self.sp_end, self.sp_wait, self.sp_fade_target):
+                  self.sp_start, self.sp_end, self.sp_fade_in, self.sp_fade_out,
+                  self.sp_wait, self.sp_fade_target):
             w.valueChanged.connect(self._on_any_change)
         self.sp_loops.valueChanged.connect(self._on_any_change)
         self.cb_type.currentTextChanged.connect(self._on_type_change)
@@ -230,6 +235,8 @@ class InspectorWidget(QWidget):
         self.sp_loops.setValue(cue.loops)
         self.sp_start.setValue(cue.audio_start_offset)
         self.sp_end.setValue(cue.audio_end_offset)
+        self.sp_fade_in.setValue(cue.audio_fade_in)
+        self.sp_fade_out.setValue(cue.audio_fade_out)
         self.sp_wait.setValue(cue.wait_duration)
         self.sp_fade_target.setValue(cue.fade_target_db)
         self.chk_fade_stops.setChecked(cue.fade_stops_target)
@@ -271,6 +278,8 @@ class InspectorWidget(QWidget):
         c.loops = self.sp_loops.value()
         c.audio_start_offset = self.sp_start.value()
         c.audio_end_offset = self.sp_end.value()
+        c.audio_fade_in = self.sp_fade_in.value()
+        c.audio_fade_out = self.sp_fade_out.value()
         c.wait_duration = self.sp_wait.value()
         c.fade_target_db = self.sp_fade_target.value()
         c.fade_stops_target = self.chk_fade_stops.isChecked()

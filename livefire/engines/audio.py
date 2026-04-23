@@ -82,6 +82,7 @@ class AudioSource:
         loops: int = 1,
         start_offset_s: float = 0.0,
         end_offset_s: float = 0.0,
+        fade_in_s: float = 0.0,
     ):
         self.cue_id = cue_id
         self._samples = samples
@@ -101,12 +102,19 @@ class AudioSource:
         self._loops_total = loops
         self._loops_done = 0
 
-        # Gain
-        g = db_to_linear(volume_db)
-        self._current_gain = g
-        self._target_gain = g
-        self._ramp_frames = 0
-        self._ramp_delta = 0.0
+        # Gain: bij fade-in starten we op stilte en rampen we naar volume_db.
+        final_g = db_to_linear(volume_db)
+        fade_in_frames = max(0, int(fade_in_s * sample_rate))
+        if fade_in_frames > 0:
+            self._current_gain = 0.0
+            self._target_gain = final_g
+            self._ramp_frames = fade_in_frames
+            self._ramp_delta = final_g / fade_in_frames
+        else:
+            self._current_gain = final_g
+            self._target_gain = final_g
+            self._ramp_frames = 0
+            self._ramp_delta = 0.0
         self._stop_at_end_of_ramp = False
 
         self._finished = False
@@ -313,6 +321,7 @@ class AudioEngine:
         loops: int = 1,
         start_offset: float = 0.0,
         end_offset: float = 0.0,
+        fade_in: float = 0.0,
     ) -> bool:
         """Laadt het bestand, resamplet indien nodig, registreert de source."""
         if not self.available:
@@ -345,6 +354,7 @@ class AudioEngine:
             loops=loops,
             start_offset_s=start_offset,
             end_offset_s=end_offset,
+            fade_in_s=fade_in,
         )
         with self._lock:
             # Als deze cue al speelt, eerst oude source weg
@@ -364,7 +374,16 @@ class AudioEngine:
         src.apply_fade(target_db, duration_s, stops=stops)
         return True
 
-    def stop_cue(self, cue_id: str) -> None:
+    def stop_cue(self, cue_id: str, fade_out: float = 0.0) -> None:
+        """Stop een cue. Met fade_out > 0: fade naar stilte en stop dan; de
+        source blijft tijdens de fade in de mixer zodat overlap met een
+        nieuwe cue een natuurlijke crossfade geeft."""
+        if fade_out > 0:
+            with self._lock:
+                src = self._sources.get(cue_id)
+            if src is not None:
+                src.apply_fade(-120.0, fade_out, stops=True)
+            return
         with self._lock:
             src = self._sources.pop(cue_id, None)
         if src is not None:

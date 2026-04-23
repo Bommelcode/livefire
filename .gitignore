@@ -13,3 +13,4 @@ build/
 *.livefire
 !tests/**/*.livefire
 settings.json
+.claude/
