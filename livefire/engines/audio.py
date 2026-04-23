@@ -282,6 +282,27 @@ class AudioEngine:
         self._started = False
         self.stop_all()
 
+    def set_device(
+        self,
+        device: int | str | None,
+        sample_rate: int | None = None,
+    ) -> tuple[bool, str]:
+        """Wissel het output-device (en optioneel de samplerate) on-the-fly.
+        Stopt eerst alle actieve cues — device-wissel tijdens playback is
+        show-onveilig. Geeft (ok, foutmelding) terug; bij ok=False blijft de
+        oude configuratie actief en is de engine gestopt."""
+        self.stop_all()
+        was_started = self._started
+        self.stop()
+        self.device = device
+        if sample_rate is not None:
+            self.sample_rate = sample_rate
+        if not was_started:
+            return True, ""
+        if not self.start():
+            return False, self._last_error or "Onbekende fout bij starten van engine."
+        return True, ""
+
     # ---- playback ----------------------------------------------------------
 
     def play_file(
@@ -391,6 +412,50 @@ class AudioEngine:
 
 
 # ---- helpers ---------------------------------------------------------------
+
+@dataclass
+class OutputDeviceInfo:
+    """Subset van sounddevice device-info dat de UI nodig heeft."""
+
+    index: int
+    name: str
+    max_output_channels: int
+    default_samplerate: float
+
+
+def list_output_devices() -> list[OutputDeviceInfo]:
+    """Geef alle beschikbare output-devices met ≥2 kanalen terug. Stille lijst
+    als sounddevice niet geladen is."""
+    if not _SD_OK:
+        return []
+    out: list[OutputDeviceInfo] = []
+    try:
+        devices = sd.query_devices()  # type: ignore[union-attr]
+    except Exception:
+        return []
+    for i, d in enumerate(devices):
+        ch = int(d.get("max_output_channels", 0) or 0)
+        if ch < 2:
+            continue
+        out.append(OutputDeviceInfo(
+            index=i,
+            name=str(d.get("name", f"device {i}")),
+            max_output_channels=ch,
+            default_samplerate=float(d.get("default_samplerate", 0) or 0),
+        ))
+    return out
+
+
+def find_device_index_by_name(name: str) -> int | None:
+    """Zoek een device-index op basis van naam (USB-devices schuiven van
+    index bij reconnect, dus slaan we de naam op). None als niet gevonden."""
+    if not name:
+        return None
+    for d in list_output_devices():
+        if d.name == name:
+            return d.index
+    return None
+
 
 def _resample(samples: np.ndarray, src_sr: int, dst_sr: int) -> np.ndarray:
     """Eenvoudige polyphase-resample per kanaal. Geen SRC maar voldoende

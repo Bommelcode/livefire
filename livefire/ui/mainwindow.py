@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSettings
 from PyQt6.QtGui import QAction, QKeySequence, QShortcut
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QFileDialog,
@@ -17,12 +17,16 @@ from ..cues import Cue, CueType
 from ..workspace import Workspace
 from ..playback import PlaybackController
 from ..engines import registry
-from ..engines.audio import register_status as register_audio_status
+from ..engines.audio import (
+    register_status as register_audio_status,
+    find_device_index_by_name,
+)
 
 from .cuelist import CueListWidget
 from .inspector import InspectorWidget
 from .transport import TransportWidget
-from .dialogs import show_about, EngineStatusDialog
+from .dialogs import show_about, EngineStatusDialog, PreferencesDialog
+from .dialogs.preferences import DEFAULT_SAMPLE_RATE
 
 
 class MainWindow(QMainWindow):
@@ -34,8 +38,12 @@ class MainWindow(QMainWindow):
         # Model
         self.ws = Workspace()
 
+        # Audio-engine configureren vanuit QSettings (device + samplerate)
+        # vóórdat de controller hem start.
+        audio = self._build_audio_engine_from_settings()
+
         # Playback
-        self.controller = PlaybackController(self.ws, parent=self)
+        self.controller = PlaybackController(self.ws, parent=self, audio=audio)
         self.controller.cue_state_changed.connect(self._on_cue_state_changed)
         self.controller.running_changed.connect(self._on_running_changed)
 
@@ -95,6 +103,8 @@ class MainWindow(QMainWindow):
         self._add_action(m_file, "Openen…", self.action_open, QKeySequence.StandardKey.Open)
         self._add_action(m_file, "Opslaan", self.action_save, QKeySequence.StandardKey.Save)
         self._add_action(m_file, "Opslaan als…", self.action_save_as, QKeySequence.StandardKey.SaveAs)
+        m_file.addSeparator()
+        self._add_action(m_file, "Voorkeuren…", self.action_preferences, QKeySequence("Ctrl+,"))
         m_file.addSeparator()
         self._add_action(m_file, "Afsluiten", self.close, QKeySequence("Ctrl+Q"))
 
@@ -254,8 +264,23 @@ class MainWindow(QMainWindow):
         dlg = EngineStatusDialog(self)
         dlg.exec()
 
+    def action_preferences(self) -> None:
+        dlg = PreferencesDialog(self.controller.audio, self)
+        if dlg.exec():
+            self._refresh_statusbar()
+
     def action_about(self) -> None:
         show_about(self)
+
+    # ---- audio-engine config ----------------------------------------------
+
+    def _build_audio_engine_from_settings(self):
+        from ..engines import AudioEngine
+        s = QSettings()
+        device_name = s.value("audio/device_name", "", type=str)
+        sr = s.value("audio/samplerate", DEFAULT_SAMPLE_RATE, type=int)
+        device = find_device_index_by_name(device_name) if device_name else None
+        return AudioEngine(sample_rate=sr, device=device)
 
     # ---- reactive handlers ------------------------------------------------
 
