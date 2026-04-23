@@ -37,10 +37,15 @@ class PlaybackController(QObject):
     cue_state_changed = pyqtSignal(str)   # cue.id
     running_changed = pyqtSignal()
 
-    def __init__(self, workspace: Workspace, parent: QObject | None = None):
+    def __init__(
+        self,
+        workspace: Workspace,
+        parent: QObject | None = None,
+        audio: AudioEngine | None = None,
+    ):
         super().__init__(parent)
         self.workspace = workspace
-        self.audio = AudioEngine()
+        self.audio = audio if audio is not None else AudioEngine()
         self.audio.start()
 
         self._running: dict[str, _Running] = {}

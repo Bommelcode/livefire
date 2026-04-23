@@ -5,6 +5,17 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+### Toegevoegd
+- Voorkeuren-dialog (Bestand → Voorkeuren…, Ctrl+,) met output-device- en
+  samplerate-keuze. Selectie wordt via QSettings persistent opgeslagen op
+  basis van device-naam (niet index), zodat USB-herconnects geen invloed
+  hebben. Bij opstart laadt liveFire de opgeslagen keuze; onbeschikbare
+  devices vallen terug op systeem-default.
+- `AudioEngine.set_device()` + `list_output_devices()` + 
+  `find_device_index_by_name()` voor veilige engine-herconfiguratie
+  (stopt eerst alle actieve cues; rolt terug bij startfout).
+- Tests voor de engine-configuratie-API in `tests/test_audio_engine.py`.
+
 ### Gewijzigd
 - Inspector-kleurveld is nu een dropdown met preset cue-kleuren (QLab-stijl)
   inclusief kleur-swatches. Niet-preset hex-waarden uit oudere workspaces
