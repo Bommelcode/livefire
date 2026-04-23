@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.spec
+.idea/
+.vscode/
+.pytest_cache/
+*.livefire
+!tests/**/*.livefire
+settings.json
