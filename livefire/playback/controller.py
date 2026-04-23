@@ -28,6 +28,7 @@ class _Running:
     phase: str = "pre_wait"   # pre_wait | action | post_wait | done
     phase_started_at: float = 0.0
     action_duration: float = 0.0   # berekend op moment van action-start
+    stop_triggered: bool = False   # voor audio: fade-out al ingezet?
 
 
 class PlaybackController(QObject):
@@ -122,6 +123,7 @@ class PlaybackController(QObject):
                 loops=cue.loops,
                 start_offset=cue.audio_start_offset,
                 end_offset=cue.audio_end_offset,
+                fade_in=cue.audio_fade_in,
             )
             if not ok:
                 r.action_duration = 0.0
@@ -208,23 +210,41 @@ class PlaybackController(QObject):
             elif r.phase == "action":
                 finished = False
                 if r.cue.cue_type == CueType.AUDIO:
+                    # Bepaal wanneer de "main playback" eindigt (expliciete
+                    # duration óf natuurlijk einde van het bestand).
+                    main_done = False
                     if r.action_duration > 0:
                         if elapsed_phase >= r.action_duration:
-                            finished = True
+                            main_done = True
                     else:
+                        if not self.audio.is_playing(r.cue.id):
+                            main_done = True
+
+                    if main_done and not r.stop_triggered:
+                        self.audio.stop_cue(r.cue.id, fade_out=r.cue.audio_fade_out)
+                        r.stop_triggered = True
+                        # AUTO_FOLLOW moet hier al triggeren zodat de volgende
+                        # cue start terwijl deze uitfadet — dat geeft de
+                        # gewenste crossfade.
+                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                            to_advance.append(cid)
+                        if r.cue.audio_fade_out <= 0:
+                            finished = True
+                    elif r.stop_triggered:
+                        # Wacht tot fade-out klaar is voor we post_wait ingaan.
                         if not self.audio.is_playing(r.cue.id):
                             finished = True
                 else:
                     if elapsed_phase >= r.action_duration:
                         finished = True
+                        # Niet-audio: AUTO_FOLLOW triggert hier.
+                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                            to_advance.append(cid)
 
                 if finished:
                     r.phase = "post_wait"
                     r.phase_started_at = now
-                    # Auto-follow: volgende cue start ná de actie
-                    if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
-                        to_advance.append(cid)
-                    # Audio engine cleanup
+                    # Zorg dat er niets blijft hangen in de mixer.
                     if r.cue.cue_type == CueType.AUDIO:
                         self.audio.stop_cue(r.cue.id)
 

@@ -6,6 +6,11 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 ## [Unreleased]
 
 ### Toegevoegd
+- Per-cue **Fade-in** en **Fade-out** (s) op Audio-cues in de inspector.
+  Overlappende audio-cues geven hiermee een natuurlijke crossfade: bij
+  AUTO_FOLLOW start de volgende cue zodra de main-playback van de huidige
+  cue eindigt, terwijl de fade-out parallel doorloopt. Fields worden
+  meegenomen in de workspace-roundtrip.
 - Voorkeuren-dialog (Bestand → Voorkeuren…, Ctrl+,) met output-device- en
   samplerate-keuze. Selectie wordt via QSettings persistent opgeslagen op
   basis van device-naam (niet index), zodat USB-herconnects geen invloed

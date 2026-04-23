@@ -15,7 +15,8 @@ from livefire.workspace import Workspace
 def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
     ws = Workspace(name="roundtrip")
     ws.add_cue(Cue(cue_type=CueType.AUDIO, name="intro", volume_db=-6.0,
-                   loops=2, audio_start_offset=0.5))
+                   loops=2, audio_start_offset=0.5,
+                   audio_fade_in=1.5, audio_fade_out=2.0))
     ws.add_cue(Cue(cue_type=CueType.WAIT, name="pauze", wait_duration=3.0))
     target = ws.cues[0].id
     ws.add_cue(Cue(cue_type=CueType.FADE, name="outfade",
@@ -43,6 +44,8 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
         assert orig.target_cue_id == got.target_cue_id
         assert orig.fade_stops_target == got.fade_stops_target
         assert orig.continue_mode == got.continue_mode
+        assert orig.audio_fade_in == got.audio_fade_in
+        assert orig.audio_fade_out == got.audio_fade_out
 
 
 def test_save_writes_current_format_version(tmp_path: Path):

@@ -68,6 +68,8 @@ class Cue:
     loops: int = 1             # 1 = 1x, 0 = oneindig, N = N keer
     audio_start_offset: float = 0.0
     audio_end_offset: float = 0.0
+    audio_fade_in: float = 0.0   # s, 0 = hard in
+    audio_fade_out: float = 0.0  # s, 0 = hard out
 
     # Fade-target
     target_cue_id: str = ""    # voor Stop, Fade, Start

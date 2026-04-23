@@ -52,3 +52,43 @@ def test_set_device_on_stopped_engine_updates_config():
     assert ok, err
     assert eng.sample_rate == 44100
     assert eng.device is None
+
+
+def test_audio_source_fade_in_ramps_from_silence():
+    """Een AudioSource met fade_in_s > 0 start bij 0.0 en ramped naar het
+    volume-doel — zodat overlappende cues een natuurlijke crossfade geven."""
+    import numpy as np
+    from livefire.engines.audio import AudioSource
+
+    sr = 48000
+    frames = sr  # 1 s mono->stereo signaal op volle sterkte
+    samples = np.ones((frames, 2), dtype=np.float32)
+
+    src = AudioSource(
+        cue_id="x", samples=samples, sample_rate=sr,
+        volume_db=0.0, loops=1, fade_in_s=0.5,
+    )
+    # Eerste sample vlak na start: gain ≈ 0 → output ≈ 0
+    out = src.read(1, 2)
+    assert abs(out[0, 0]) < 0.01, f"start van fade-in niet stil: {out[0, 0]}"
+
+    # Na de volledige fade-in-duur: gain op target (1.0) → output ≈ 1.0
+    src2 = AudioSource(
+        cue_id="y", samples=samples, sample_rate=sr,
+        volume_db=0.0, loops=1, fade_in_s=0.5,
+    )
+    _ = src2.read(int(0.5 * sr), 2)   # eet de fade-in op
+    tail = src2.read(100, 2)
+    assert tail[0, 0] > 0.95, f"eind van fade-in niet op target: {tail[0, 0]}"
+
+
+def test_audio_source_no_fade_in_plays_at_volume_immediately():
+    import numpy as np
+    from livefire.engines.audio import AudioSource
+
+    sr = 48000
+    samples = np.ones((sr, 2), dtype=np.float32)
+    src = AudioSource(cue_id="z", samples=samples, sample_rate=sr,
+                      volume_db=0.0, loops=1, fade_in_s=0.0)
+    out = src.read(10, 2)
+    assert out[0, 0] > 0.99, f"zonder fade-in niet direct op volume: {out[0, 0]}"
