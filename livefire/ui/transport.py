@@ -18,11 +18,13 @@ class TransportWidget(QWidget):
 
         self.btn_go = QPushButton("GO")
         self.btn_go.setObjectName("goButton")
+        self.btn_go.setToolTip("Start de cue op de playhead (Spatie)")
         self.btn_go.clicked.connect(self.go_clicked.emit)
         lay.addWidget(self.btn_go)
 
         self.btn_stop = QPushButton("Stop All")
         self.btn_stop.setObjectName("stopButton")
+        self.btn_stop.setToolTip("Stop onmiddellijk alle actieve cues (Escape)")
         self.btn_stop.clicked.connect(self.stop_all_clicked.emit)
         lay.addWidget(self.btn_stop)
 
@@ -32,9 +34,11 @@ class TransportWidget(QWidget):
         lay.addWidget(sep)
 
         self.lbl_playhead = QLabel("Playhead: —")
+        self.lbl_playhead.setToolTip("De cue die bij de volgende GO gestart wordt")
         lay.addWidget(self.lbl_playhead)
 
         self.lbl_active = QLabel("Actief: 0")
+        self.lbl_active.setToolTip("Aantal cues dat op dit moment speelt")
         lay.addWidget(self.lbl_active)
 
         lay.addStretch(1)
