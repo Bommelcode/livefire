@@ -82,6 +82,9 @@ class Cue:
     # Groepsgedrag
     group_mode: str = "list"   # "list" | "first-then-list"
 
+    # Triggers (v0.4.0)
+    trigger_osc: str = ""      # OSC-address dat deze cue afvuurt, bv. /livefire/go/intro
+
     # Runtime-only (niet geserialiseerd)
     state: str = field(default="idle", compare=False)  # idle|running|finished
 

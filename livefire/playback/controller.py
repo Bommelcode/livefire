@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from ..cues import Cue, CueType, ContinueMode
-from ..engines import AudioEngine
+from ..engines import AudioEngine, OscInputEngine
 from ..workspace import Workspace
 
 
@@ -43,11 +43,15 @@ class PlaybackController(QObject):
         workspace: Workspace,
         parent: QObject | None = None,
         audio: AudioEngine | None = None,
+        osc: OscInputEngine | None = None,
     ):
         super().__init__(parent)
         self.workspace = workspace
         self.audio = audio if audio is not None else AudioEngine()
         self.audio.start()
+
+        self.osc = osc if osc is not None else OscInputEngine(self)
+        self.osc.message_received.connect(self._on_osc_message)
 
         self._running: dict[str, _Running] = {}
         self._playhead_index: int = 0
@@ -68,6 +72,7 @@ class PlaybackController(QObject):
         self._timer.stop()
         self.stop_all()
         self.audio.stop()
+        self.osc.stop()
 
     # ---- transport ---------------------------------------------------------
 
@@ -85,6 +90,23 @@ class PlaybackController(QObject):
         cue = self.workspace.cues[self._playhead_index]
         self._playhead_index += 1
         self._start_cue(cue)
+
+    def fire_cue(self, cue_id: str) -> bool:
+        """Start een specifieke cue zonder de playhead te verplaatsen
+        (voor externe triggers zoals OSC/MIDI)."""
+        cue = self.workspace.find(cue_id)
+        if cue is None:
+            return False
+        self._start_cue(cue)
+        return True
+
+    # ---- trigger-matching --------------------------------------------------
+
+    def _on_osc_message(self, address: str, _args: tuple) -> None:
+        """Op inkomende OSC: vind cues met trigger_osc == address en vuur ze."""
+        for cue in self.workspace.cues:
+            if cue.trigger_osc and cue.trigger_osc == address:
+                self.fire_cue(cue.id)
 
     def stop_all(self) -> None:
         ids = list(self._running.keys())

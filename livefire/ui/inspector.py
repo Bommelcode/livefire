@@ -138,6 +138,21 @@ class InspectorWidget(QWidget):
         tl.addRow("", self.chk_fade_stops)
         lay.addWidget(self.grp_target)
 
+        # ---- Triggers ------------------------------------------------------
+        self.grp_triggers = QGroupBox("Triggers")
+        trg = QFormLayout(self.grp_triggers)
+        osc_row = QHBoxLayout()
+        self.ed_trigger_osc = QLineEdit()
+        self.ed_trigger_osc.setPlaceholderText("/livefire/go/intro — leeg = geen trigger")
+        self.btn_learn_osc = QPushButton("Learn…")
+        self.btn_learn_osc.clicked.connect(self._learn_osc)
+        osc_row.addWidget(self.ed_trigger_osc)
+        osc_row.addWidget(self.btn_learn_osc)
+        osc_container = QWidget()
+        osc_container.setLayout(osc_row)
+        trg.addRow("OSC-address", osc_container)
+        lay.addWidget(self.grp_triggers)
+
         # ---- Notities ------------------------------------------------------
         grp_notes = QGroupBox("Notities")
         nl = QVBoxLayout(grp_notes)
@@ -149,7 +164,8 @@ class InspectorWidget(QWidget):
         lay.addStretch(1)
 
         # ---- wire changes --------------------------------------------------
-        for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes):
+        for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
+                  self.ed_trigger_osc):
             if isinstance(w, QPlainTextEdit):
                 w.textChanged.connect(self._on_any_change)
             else:
@@ -240,6 +256,7 @@ class InspectorWidget(QWidget):
         self.sp_wait.setValue(cue.wait_duration)
         self.sp_fade_target.setValue(cue.fade_target_db)
         self.chk_fade_stops.setChecked(cue.fade_stops_target)
+        self.ed_trigger_osc.setText(cue.trigger_osc)
         self.ed_notes.setPlainText(cue.notes)
 
         self.refresh_targets()
@@ -284,6 +301,7 @@ class InspectorWidget(QWidget):
         c.fade_target_db = self.sp_fade_target.value()
         c.fade_stops_target = self.chk_fade_stops.isChecked()
         c.target_cue_id = self.cb_target.currentData() or ""
+        c.trigger_osc = self.ed_trigger_osc.text().strip()
         c.notes = self.ed_notes.toPlainText()
         self.workspace.dirty = True
         self.cue_changed.emit(c)
@@ -310,3 +328,22 @@ class InspectorWidget(QWidget):
         )
         if path:
             self.ed_path.setText(path)
+
+    # ---- trigger-learn ----------------------------------------------------
+
+    osc_engine = None  # wordt door MainWindow gezet: inspector.osc_engine = …
+
+    def _learn_osc(self) -> None:
+        """Open een modal die wacht op de volgende OSC-message en 'm invult."""
+        from .dialogs.trigger_learn import OscLearnDialog
+        if self.osc_engine is None or not self.osc_engine.running:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, "OSC niet actief",
+                "De OSC-input engine draait niet. Zet 'm aan via Voorkeuren…"
+                " en stuur dan nogmaals.",
+            )
+            return
+        dlg = OscLearnDialog(self.osc_engine, self)
+        if dlg.exec() and dlg.learned_address:
+            self.ed_trigger_osc.setText(dlg.learned_address)
