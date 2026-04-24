@@ -24,6 +24,7 @@ from ..engines.audio import (
 from ..engines.osc import register_status as register_osc_status
 
 from .cuelist import CueListWidget
+from .cuetoolbar import CueToolbar
 from .inspector import InspectorWidget
 from .transport import TransportWidget
 from .dialogs import show_about, EngineStatusDialog, PreferencesDialog
@@ -81,11 +82,27 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         vroot.addWidget(splitter, 1)
 
+        # Linkerkant: cue-toolbar boven de cuelist
+        left_side = QWidget()
+        left_layout = QVBoxLayout(left_side)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(0)
+
+        self.cue_toolbar = CueToolbar()
+        self.cue_toolbar.new_cue.connect(self.action_new_cue)
+        self.cue_toolbar.delete_selected.connect(self.action_delete_selected)
+        self.cue_toolbar.renumber.connect(self.action_renumber)
+        self.cue_toolbar.move_up.connect(lambda: self.cue_list.move_selected(-1))
+        self.cue_toolbar.move_down.connect(lambda: self.cue_list.move_selected(1))
+        left_layout.addWidget(self.cue_toolbar)
+
         self.cue_list = CueListWidget(self.ws)
         self.cue_list.cue_selected.connect(self._on_cue_selected)
         self.cue_list.playhead_changed.connect(self._on_playhead_changed)
         self.cue_list.go_requested.connect(self.action_go)
-        splitter.addWidget(self.cue_list)
+        left_layout.addWidget(self.cue_list, 1)
+
+        splitter.addWidget(left_side)
 
         self.inspector = InspectorWidget(self.ws)
         self.inspector.cue_changed.connect(self._on_inspector_changed)

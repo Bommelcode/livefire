@@ -199,14 +199,14 @@ class CueListWidget(QTreeWidget):
         # Ctrl+Up/Down = verplaats
         if e.modifiers() & Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Up:
-                self._move_selected(-1)
+                self.move_selected(-1)
                 return
             if e.key() == Qt.Key.Key_Down:
-                self._move_selected(1)
+                self.move_selected(1)
                 return
         super().keyPressEvent(e)
 
-    def _move_selected(self, delta: int) -> None:
+    def move_selected(self, delta: int) -> None:
         cues = self.selected_cues()
         if not cues:
             return
