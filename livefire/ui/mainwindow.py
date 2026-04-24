@@ -74,7 +74,9 @@ class MainWindow(QMainWindow):
         vroot.setContentsMargins(0, 0, 0, 0)
         vroot.setSpacing(0)
 
-        self.transport = TransportWidget()
+        self.transport = TransportWidget(
+            countdown_source=self.controller.primary_countdown
+        )
         self.transport.go_clicked.connect(self.action_go)
         self.transport.stop_all_clicked.connect(self.action_stop_all)
         vroot.addWidget(self.transport)

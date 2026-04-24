@@ -128,6 +128,20 @@ class AudioSource:
     def channels(self) -> int:
         return self._channels
 
+    @property
+    def remaining_seconds(self) -> float:
+        """Resterende playback-tijd in seconden over alle loops heen.
+        Geeft -1.0 bij oneindige loops en 0.0 als de source klaar is."""
+        if self._finished:
+            return 0.0
+        this_loop_frames = max(0, self._effective_end - self._pos)
+        if self._loops_total == 0:  # oneindig
+            return -1.0
+        remaining_loops = max(0, self._loops_total - self._loops_done - 1)
+        full_loop_frames = max(0, self._effective_end)
+        total_frames = this_loop_frames + remaining_loops * full_loop_frames
+        return total_frames / self._sr
+
     # ---- API vanuit UI / controller thread ---------------------------------
 
     def apply_fade(self, target_db: float, duration_s: float, stops: bool = False) -> None:
@@ -400,6 +414,15 @@ class AudioEngine:
         with self._lock:
             src = self._sources.get(cue_id)
         return src is not None and not src.finished
+
+    def get_remaining(self, cue_id: str) -> float | None:
+        """Resterende playback-tijd voor deze cue. -1.0 bij oneindige loop,
+        None als de cue niet (meer) speelt."""
+        with self._lock:
+            src = self._sources.get(cue_id)
+        if src is None or src.finished:
+            return None
+        return src.remaining_seconds
 
     def active_cue_ids(self) -> list[str]:
         with self._lock:

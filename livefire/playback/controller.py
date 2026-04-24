@@ -100,6 +100,44 @@ class PlaybackController(QObject):
         self._start_cue(cue)
         return True
 
+    def primary_countdown(self) -> tuple[str, float, bool] | None:
+        """Info voor de grote countdown-label in de transportbalk.
+
+        Retourneert ``(label, seconds, is_countdown)`` of ``None``:
+        - ``is_countdown=True`` → seconds telt af (resterend)
+        - ``is_countdown=False`` → seconds telt op (bv. bij oneindige loop)
+
+        Pakt de audio-cue in 'action'-fase met de grootste resterende tijd.
+        """
+        best: tuple[str, float, bool] | None = None
+        best_remaining = -1.0
+        for r in self._running.values():
+            if r.phase != "action":
+                continue
+            if r.cue.cue_type != CueType.AUDIO:
+                continue
+            elapsed = time.monotonic() - r.phase_started_at
+            label = r.cue.name or "(naamloos)"
+            if r.action_duration > 0:
+                remaining = max(0.0, r.action_duration - elapsed)
+                if remaining > best_remaining:
+                    best_remaining = remaining
+                    best = (label, remaining, True)
+            else:
+                src_remaining = self.audio.get_remaining(r.cue.id)
+                if src_remaining is None:
+                    continue
+                if src_remaining < 0:
+                    # Oneindige loop — count-up
+                    if elapsed > best_remaining:
+                        best_remaining = elapsed
+                        best = (label, elapsed, False)
+                else:
+                    if src_remaining > best_remaining:
+                        best_remaining = src_remaining
+                        best = (label, src_remaining, True)
+        return best
+
     # ---- trigger-matching --------------------------------------------------
 
     def _on_osc_message(self, address: str, _args: tuple) -> None:
