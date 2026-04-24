@@ -56,6 +56,21 @@ class CueListWidget(QTreeWidget):
 
         self.setColumnCount(len(COLUMNS))
         self.setHeaderLabels(COLUMNS)
+        # Tooltips per kolom-header (index == COLUMNS.index)
+        _column_tooltips = [
+            "Cue-nummer — vrij tekstveld, wordt zichtbaar als kleurbalk als er een kleur is ingesteld",
+            "Cue-type (Audio / Fade / Wait / Stop / Start / Group / Memo)",
+            "Naam van de cue — vrij tekstveld",
+            "Actie-duur (voor Audio: ingestelde duration of — = speel tot einde bestand)",
+            "Continue-mode: Do Not Continue / Auto-Continue / Auto-Follow",
+            "Runtime-status: idle / running / finished",
+        ]
+        for i, tip in enumerate(_column_tooltips):
+            self.headerItem().setToolTip(i, tip)
+        self.setToolTip(
+            "Cuelist — dubbelklik om playhead te zetten en te starten. "
+            "Ctrl+↑/↓ verplaatst geselecteerde cues."
+        )
         self.setAlternatingRowColors(True)
         self.setRootIsDecorated(False)
         self.setUniformRowHeights(True)

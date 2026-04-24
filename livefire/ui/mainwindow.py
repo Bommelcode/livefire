@@ -107,54 +107,77 @@ class MainWindow(QMainWindow):
 
         # File
         m_file = mb.addMenu("&Bestand")
-        self._add_action(m_file, "Nieuw", self.action_new, QKeySequence.StandardKey.New)
-        self._add_action(m_file, "Openen…", self.action_open, QKeySequence.StandardKey.Open)
-        self._add_action(m_file, "Opslaan", self.action_save, QKeySequence.StandardKey.Save)
-        self._add_action(m_file, "Opslaan als…", self.action_save_as, QKeySequence.StandardKey.SaveAs)
+        m_file.setToolTipsVisible(True)
+        self._add_action(m_file, "Nieuw", self.action_new, QKeySequence.StandardKey.New,
+                         tip="Maak een nieuwe, lege workspace (sluit de huidige)")
+        self._add_action(m_file, "Openen…", self.action_open, QKeySequence.StandardKey.Open,
+                         tip="Open een bestaande .livefire workspace van schijf")
+        self._add_action(m_file, "Opslaan", self.action_save, QKeySequence.StandardKey.Save,
+                         tip="Schrijf de huidige workspace weg (Opslaan als… bij eerste keer)")
+        self._add_action(m_file, "Opslaan als…", self.action_save_as, QKeySequence.StandardKey.SaveAs,
+                         tip="Sla de workspace op naar een nieuw .livefire bestand")
         m_file.addSeparator()
-        self._add_action(m_file, "Voorkeuren…", self.action_preferences, QKeySequence("Ctrl+,"))
+        self._add_action(m_file, "Voorkeuren…", self.action_preferences, QKeySequence("Ctrl+,"),
+                         tip="Audio-device, samplerate en OSC-input instellen")
         m_file.addSeparator()
-        self._add_action(m_file, "Afsluiten", self.close, QKeySequence("Ctrl+Q"))
+        self._add_action(m_file, "Afsluiten", self.close, QKeySequence("Ctrl+Q"),
+                         tip="Sluit liveFire")
 
         # Cue
         m_cue = mb.addMenu("&Cue")
-        self._add_action(m_cue, "Nieuwe Audio-cue", lambda: self.action_new_cue(CueType.AUDIO), QKeySequence("Ctrl+1"))
-        self._add_action(m_cue, "Nieuwe Fade-cue", lambda: self.action_new_cue(CueType.FADE), QKeySequence("Ctrl+2"))
-        self._add_action(m_cue, "Nieuwe Wait-cue", lambda: self.action_new_cue(CueType.WAIT), QKeySequence("Ctrl+3"))
-        self._add_action(m_cue, "Nieuwe Stop-cue", lambda: self.action_new_cue(CueType.STOP), QKeySequence("Ctrl+4"))
-        self._add_action(m_cue, "Nieuwe Group-cue", lambda: self.action_new_cue(CueType.GROUP), QKeySequence("Ctrl+5"))
-        self._add_action(m_cue, "Nieuwe Memo-cue", lambda: self.action_new_cue(CueType.MEMO), QKeySequence("Ctrl+6"))
-        self._add_action(m_cue, "Nieuwe Start-cue", lambda: self.action_new_cue(CueType.START), QKeySequence("Ctrl+7"))
+        m_cue.setToolTipsVisible(True)
+        self._add_action(m_cue, "Nieuwe Audio-cue", lambda: self.action_new_cue(CueType.AUDIO), QKeySequence("Ctrl+1"),
+                         tip="Speelt een audio-bestand af met volume, loops en fades")
+        self._add_action(m_cue, "Nieuwe Fade-cue", lambda: self.action_new_cue(CueType.FADE), QKeySequence("Ctrl+2"),
+                         tip="Verandert het volume van een andere (lopende) audio-cue over tijd")
+        self._add_action(m_cue, "Nieuwe Wait-cue", lambda: self.action_new_cue(CueType.WAIT), QKeySequence("Ctrl+3"),
+                         tip="Pauzeert een vaste tijd in de playback-volgorde")
+        self._add_action(m_cue, "Nieuwe Stop-cue", lambda: self.action_new_cue(CueType.STOP), QKeySequence("Ctrl+4"),
+                         tip="Stopt een specifieke cue of (leeg target) alles")
+        self._add_action(m_cue, "Nieuwe Group-cue", lambda: self.action_new_cue(CueType.GROUP), QKeySequence("Ctrl+5"),
+                         tip="Container voor meerdere cues (placeholder in v0.3)")
+        self._add_action(m_cue, "Nieuwe Memo-cue", lambda: self.action_new_cue(CueType.MEMO), QKeySequence("Ctrl+6"),
+                         tip="Alleen notitie — doet niets bij GO")
+        self._add_action(m_cue, "Nieuwe Start-cue", lambda: self.action_new_cue(CueType.START), QKeySequence("Ctrl+7"),
+                         tip="Triggert een andere cue bij GO (handig voor re-use)")
         m_cue.addSeparator()
-        self._add_action(m_cue, "Verwijderen", self.action_delete_selected, QKeySequence.StandardKey.Delete)
-        self._add_action(m_cue, "Hernummeren", self.action_renumber)
+        self._add_action(m_cue, "Verwijderen", self.action_delete_selected, QKeySequence.StandardKey.Delete,
+                         tip="Verwijdert de geselecteerde cue(s)")
+        self._add_action(m_cue, "Hernummeren", self.action_renumber,
+                         tip="Hernummert alle cues oplopend vanaf 1")
 
         # Transport
         m_tr = mb.addMenu("&Transport")
-        self._add_action(m_tr, "GO", self.action_go, QKeySequence("Space"))
-        self._add_action(m_tr, "Stop All", self.action_stop_all, QKeySequence("Escape"))
+        m_tr.setToolTipsVisible(True)
+        self._add_action(m_tr, "GO", self.action_go, QKeySequence("Space"),
+                         tip="Start de cue op de playhead en schuif playhead door")
+        self._add_action(m_tr, "Stop All", self.action_stop_all, QKeySequence("Escape"),
+                         tip="Stop onmiddellijk alle actieve cues (panic)")
 
         # Help
         m_help = mb.addMenu("&Help")
-        self._add_action(m_help, "Engine-status…", self.action_engine_status)
-        self._add_action(m_help, f"Over {APP_NAME}…", self.action_about)
+        m_help.setToolTipsVisible(True)
+        self._add_action(m_help, "Engine-status…", self.action_engine_status,
+                         tip="Toont welke engines (Audio, OSC) beschikbaar zijn en hun status")
+        self._add_action(m_help, f"Over {APP_NAME}…", self.action_about,
+                         tip=f"Over {APP_NAME} — versie en auteur")
 
     def _build_shortcuts(self) -> None:
-        # QAction-shortcuts werken met widget-focus conflict soms niet; deze
-        # werken window-wide.
-        for key, fn in [
-            ("Space", self.action_go),
-            ("Escape", self.action_stop_all),
-        ]:
-            sc = QShortcut(QKeySequence(key), self)
-            sc.setContext(Qt.ShortcutContext.ApplicationShortcut)
-            sc.activated.connect(fn)
+        # Zet de QAction-shortcuts uit het menu op application-wide context zodat
+        # ze werken ongeacht widget-focus. Eerder stonden hier duplicate
+        # QShortcut-objecten die conflicteerden met dezelfde keys in het menu
+        # ("QAction::event: Ambiguous shortcut overload: Space").
+        for action in self.menuBar().findChildren(QAction):
+            if action.shortcut().toString():
+                action.setShortcutContext(Qt.ShortcutContext.ApplicationShortcut)
 
     @staticmethod
-    def _add_action(menu, text, slot, shortcut=None) -> QAction:
+    def _add_action(menu, text, slot, shortcut=None, tip: str = "") -> QAction:
         a = QAction(text, menu)
         if shortcut is not None:
             a.setShortcut(shortcut)
+        if tip:
+            a.setToolTip(tip)
         a.triggered.connect(slot)
         menu.addAction(a)
         return a

@@ -43,10 +43,20 @@ class PreferencesDialog(QDialog):
         form = QFormLayout(grp)
 
         self.cb_device = QComboBox()
+        self.cb_device.setToolTip(
+            "Audio output-device. Kies 'Systeem-default' om het Windows-default device "
+            "te volgen, anders een specifiek apparaat. Naam wordt opgeslagen zodat "
+            "USB-herconnects geen invloed hebben."
+        )
         self._populate_devices()
         form.addRow("Output-device", self.cb_device)
 
         self.cb_samplerate = QComboBox()
+        self.cb_samplerate.setToolTip(
+            "Samplerate waar de audio-engine op draait. Bestanden met een andere "
+            "samplerate worden bij het laden geresampled naar deze waarde. "
+            "48 kHz is show-standaard."
+        )
         for sr in SUPPORTED_SAMPLE_RATES:
             self.cb_samplerate.addItem(f"{sr} Hz", sr)
         form.addRow("Samplerate", self.cb_samplerate)
@@ -63,9 +73,17 @@ class PreferencesDialog(QDialog):
         grp_osc = QGroupBox("OSC-input")
         osc_form = QFormLayout(grp_osc)
         self.chk_osc_enabled = QCheckBox("OSC-input inschakelen")
+        self.chk_osc_enabled.setToolTip(
+            "Start/stop de OSC-UDP-server. Aan = cues kunnen van buitenaf getriggerd "
+            "worden via hun trigger_osc-address."
+        )
         self.sp_osc_port = QSpinBox()
         self.sp_osc_port.setRange(1, 65535)
         self.sp_osc_port.setValue(DEFAULT_OSC_PORT)
+        self.sp_osc_port.setToolTip(
+            "UDP-poort waar liveFire op luistert. Companion / Stream Deck moeten dezelfde "
+            "poort gebruiken. Default 53000."
+        )
         osc_form.addRow(self.chk_osc_enabled)
         osc_form.addRow("UDP-poort", self.sp_osc_port)
         root.addWidget(grp_osc)
