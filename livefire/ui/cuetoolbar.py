@@ -17,6 +17,7 @@ from ..cues import CueType
 # de knoppen meteen herkenbaar zijn.
 _CUE_TYPE_ACCENTS = {
     CueType.AUDIO:  "#2980b9",  # blauw
+    CueType.VIDEO:  "#16a085",  # teal
     CueType.FADE:   "#c9a227",  # geel
     CueType.WAIT:   "#606060",  # grijs
     CueType.STOP:   "#c0392b",  # rood
@@ -26,12 +27,13 @@ _CUE_TYPE_ACCENTS = {
 }
 
 _CUE_TYPE_ORDER = [
-    CueType.AUDIO, CueType.FADE, CueType.WAIT, CueType.STOP,
+    CueType.AUDIO, CueType.VIDEO, CueType.FADE, CueType.WAIT, CueType.STOP,
     CueType.START, CueType.GROUP, CueType.MEMO,
 ]
 
 _CUE_TYPE_TIPS = {
     CueType.AUDIO: "Nieuwe Audio-cue (Ctrl+1)",
+    CueType.VIDEO: "Nieuwe Video-cue (Ctrl+8)",
     CueType.FADE:  "Nieuwe Fade-cue (Ctrl+2)",
     CueType.WAIT:  "Nieuwe Wait-cue (Ctrl+3)",
     CueType.STOP:  "Nieuwe Stop-cue (Ctrl+4)",

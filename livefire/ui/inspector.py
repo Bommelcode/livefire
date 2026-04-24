@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..cues import Cue, CueType, ContinueMode
+from ..engines.video import list_screens
 from ..workspace import Workspace
 from .style import CUE_COLORS
 
@@ -171,6 +172,35 @@ class InspectorWidget(QWidget):
         al.addRow("Fade-out (s)", self.sp_fade_out)
         lay.addWidget(self.grp_audio)
 
+        # ---- Video ---------------------------------------------------------
+        self.grp_video = QGroupBox("Video")
+        vl = QFormLayout(self.grp_video)
+        video_path_row = QHBoxLayout()
+        self.ed_video_path = QLineEdit()
+        self.ed_video_path.setToolTip("Pad naar het video-bestand.")
+        self.btn_browse_video = QPushButton("Bladeren…")
+        self.btn_browse_video.setToolTip("Kies een videobestand.")
+        self.btn_browse_video.clicked.connect(self._browse_video)
+        video_path_row.addWidget(self.ed_video_path)
+        video_path_row.addWidget(self.btn_browse_video)
+        vpc = QWidget()
+        vpc.setLayout(video_path_row)
+        vl.addRow("Bestand", vpc)
+        self.cb_video_screen = QComboBox()
+        self.cb_video_screen.setToolTip(
+            "Monitor waarop deze cue fullscreen wordt weergegeven."
+        )
+        for idx, label in list_screens():
+            self.cb_video_screen.addItem(label, idx)
+        vl.addRow("Output-scherm", self.cb_video_screen)
+        self.sp_video_fade_in = self._spin_seconds(max_val=600.0)
+        self.sp_video_fade_in.setToolTip("Fade-in vanuit zwart.")
+        self.sp_video_fade_out = self._spin_seconds(max_val=600.0)
+        self.sp_video_fade_out.setToolTip("Fade-to-black aan het einde van de cue.")
+        vl.addRow("Fade-in (s)", self.sp_video_fade_in)
+        vl.addRow("Fade-out (s)", self.sp_video_fade_out)
+        lay.addWidget(self.grp_video)
+
         # ---- Wait ----------------------------------------------------------
         self.grp_wait = QGroupBox("Wait")
         wl = QFormLayout(self.grp_wait)
@@ -256,23 +286,29 @@ class InspectorWidget(QWidget):
             self.cb_target:      ("target_cue_id",      lambda: self.cb_target.currentData() or ""),
             self.ed_trigger_osc: ("trigger_osc",        lambda: self.ed_trigger_osc.text().strip()),
             self.ed_notes:       ("notes",              lambda: self.ed_notes.toPlainText()),
+            self.ed_video_path:   ("file_path",           lambda: self.ed_video_path.text()),
+            self.cb_video_screen: ("video_output_screen", lambda: self.cb_video_screen.currentData()),
+            self.sp_video_fade_in:  ("video_fade_in",     lambda: self.sp_video_fade_in.value()),
+            self.sp_video_fade_out: ("video_fade_out",    lambda: self.sp_video_fade_out.value()),
         }
 
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
-                  self.ed_trigger_osc):
+                  self.ed_trigger_osc, self.ed_video_path):
             if isinstance(w, QPlainTextEdit):
                 w.textChanged.connect(self._on_any_change)
             else:
                 w.textChanged.connect(self._on_any_change)
         for w in (self.sp_pre, self.sp_dur, self.sp_post, self.sp_volume,
                   self.sp_start, self.sp_end, self.sp_fade_in, self.sp_fade_out,
-                  self.sp_wait, self.sp_fade_target):
+                  self.sp_wait, self.sp_fade_target,
+                  self.sp_video_fade_in, self.sp_video_fade_out):
             w.valueChanged.connect(self._on_any_change)
         self.sp_loops.valueChanged.connect(self._on_any_change)
         self.cb_type.currentTextChanged.connect(self._on_type_change)
         self.cb_continue.currentIndexChanged.connect(self._on_any_change)
         self.cb_target.currentIndexChanged.connect(self._on_any_change)
         self.cb_color.currentIndexChanged.connect(self._on_any_change)
+        self.cb_video_screen.currentIndexChanged.connect(self._on_any_change)
         self.chk_fade_stops.toggled.connect(self._on_any_change)
 
         self.set_cues([])
@@ -324,6 +360,7 @@ class InspectorWidget(QWidget):
         if not self.cues:
             self.header.setText("Geen cue geselecteerd")
             self.grp_audio.setVisible(False)
+            self.grp_video.setVisible(False)
             self.grp_wait.setVisible(False)
             self.grp_target.setVisible(False)
             self.content.setEnabled(False)
@@ -366,6 +403,14 @@ class InspectorWidget(QWidget):
         self.ed_trigger_osc.setText(cue.trigger_osc if not multi else "")
         self.ed_notes.setPlainText(cue.notes if not multi else "")
 
+        # Video-velden
+        self.ed_video_path.setText(cue.file_path if not multi else "")
+        idx_screen = self.cb_video_screen.findData(cue.video_output_screen)
+        if idx_screen >= 0:
+            self.cb_video_screen.setCurrentIndex(idx_screen)
+        self.sp_video_fade_in.setValue(cue.video_fade_in)
+        self.sp_video_fade_out.setValue(cue.video_fade_out)
+
         self.refresh_targets()
         idx = self.cb_target.findData(cue.target_cue_id)
         if idx >= 0:
@@ -376,13 +421,14 @@ class InspectorWidget(QWidget):
         # Per-cue velden uitschakelen bij multi-select.
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
                   self.ed_trigger_osc, self.cb_target, self.btn_browse,
-                  self.btn_learn_osc):
+                  self.btn_learn_osc, self.ed_video_path, self.btn_browse_video):
             w.setEnabled(not multi)
 
         self._updating = False
 
     def _update_visibility(self, cue_type: str) -> None:
         self.grp_audio.setVisible(cue_type == CueType.AUDIO)
+        self.grp_video.setVisible(cue_type == CueType.VIDEO)
         self.grp_wait.setVisible(cue_type == CueType.WAIT)
         self.grp_target.setVisible(cue_type in (CueType.STOP, CueType.FADE, CueType.START))
 
@@ -427,6 +473,25 @@ class InspectorWidget(QWidget):
         if idx < 0:
             idx = 0  # "Geen"
         self.cb_color.setCurrentIndex(idx)
+
+    def _browse_video(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Kies video-bestand", "",
+            "Video (*.mp4 *.mov *.avi *.mkv *.webm *.m4v);;Alle bestanden (*)",
+        )
+        if path:
+            # Zelfde auto-fill-naam logica als _browse_file, maar voor video.
+            old_path = self.ed_video_path.text().strip()
+            name = self.ed_name.text().strip()
+            auto_default = bool(re.match(
+                r"^(?:" + "|".join(CueType.ALL) + r") \d+$", name
+            ))
+            from_old_file = bool(old_path) and name == Path(old_path).stem
+            should_fill = not name or auto_default or from_old_file
+
+            self.ed_video_path.setText(path)
+            if should_fill and self.cue is not None and not len(self.cues) > 1:
+                self.ed_name.setText(Path(path).stem)
 
     def _browse_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

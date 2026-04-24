@@ -14,3 +14,4 @@ build/
 !tests/**/*.livefire
 settings.json
 .claude/
+test_media/

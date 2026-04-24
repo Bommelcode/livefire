@@ -16,6 +16,7 @@ from ...engines.audio import (
 from ...engines.audio import register_status as register_audio_status
 from ...engines.osc import OscInputEngine, DEFAULT_OSC_PORT
 from ...engines.osc import register_status as register_osc_status
+from ...engines.video import VideoEngine, list_audio_devices as list_vlc_audio_devices
 
 
 SUPPORTED_SAMPLE_RATES = [44100, 48000, 96000]
@@ -29,11 +30,13 @@ class PreferencesDialog(QDialog):
         self,
         engine: AudioEngine,
         osc: OscInputEngine | None = None,
+        video: VideoEngine | None = None,
         parent=None,
     ):
         super().__init__(parent)
         self.engine = engine
         self.osc = osc
+        self.video = video
         self.setWindowTitle("Voorkeuren")
         self.setMinimumWidth(440)
 
@@ -88,6 +91,20 @@ class PreferencesDialog(QDialog):
         osc_form.addRow("UDP-poort", self.sp_osc_port)
         root.addWidget(grp_osc)
 
+        # ---- Video --------------------------------------------------------
+        grp_video = QGroupBox("Video (libVLC)")
+        video_form = QFormLayout(grp_video)
+        self.cb_video_audio = QComboBox()
+        self.cb_video_audio.setToolTip(
+            "Output-device voor de audio van video-cues. libVLC gebruikt z'n "
+            "eigen device-lijst, los van de sounddevice audio-engine."
+        )
+        self.cb_video_audio.addItem("Systeem-default", "")
+        for dev_id, dev_name in list_vlc_audio_devices():
+            self.cb_video_audio.addItem(dev_name, dev_id)
+        video_form.addRow("Audio-device", self.cb_video_audio)
+        root.addWidget(grp_video)
+
         # Waarden uit QSettings (of huidige engine-config als fallback).
         self._load_from_settings()
 
@@ -134,6 +151,10 @@ class PreferencesDialog(QDialog):
         self.sp_osc_port.setValue(
             s.value("osc/port", DEFAULT_OSC_PORT, type=int)
         )
+
+        video_dev = s.value("video/audio_device", "", type=str)
+        v_idx = self.cb_video_audio.findData(video_dev)
+        self.cb_video_audio.setCurrentIndex(v_idx if v_idx >= 0 else 0)
 
     # ---- apply -------------------------------------------------------------
 
@@ -190,5 +211,11 @@ class PreferencesDialog(QDialog):
             s.setValue("osc/enabled", bool(osc_enabled))
             s.setValue("osc/port", osc_port)
             register_osc_status(self.osc)
+
+        # Video audio-device toepassen (neemt effect vanaf volgende Video-cue)
+        video_dev = self.cb_video_audio.currentData() or ""
+        s.setValue("video/audio_device", video_dev)
+        if self.video is not None:
+            self.video.set_audio_device(video_dev)
 
         self.accept()

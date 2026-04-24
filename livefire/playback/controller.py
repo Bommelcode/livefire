@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from ..cues import Cue, CueType, ContinueMode
-from ..engines import AudioEngine, OscInputEngine
+from ..engines import AudioEngine, OscInputEngine, VideoEngine
 from ..workspace import Workspace
 
 
@@ -44,6 +44,7 @@ class PlaybackController(QObject):
         parent: QObject | None = None,
         audio: AudioEngine | None = None,
         osc: OscInputEngine | None = None,
+        video: VideoEngine | None = None,
     ):
         super().__init__(parent)
         self.workspace = workspace
@@ -52,6 +53,8 @@ class PlaybackController(QObject):
 
         self.osc = osc if osc is not None else OscInputEngine(self)
         self.osc.message_received.connect(self._on_osc_message)
+
+        self.video = video if video is not None else VideoEngine(self)
 
         self._running: dict[str, _Running] = {}
         self._playhead_index: int = 0
@@ -73,6 +76,7 @@ class PlaybackController(QObject):
         self.stop_all()
         self.audio.stop()
         self.osc.stop()
+        self.video.shutdown()
 
     # ---- transport ---------------------------------------------------------
 
@@ -151,11 +155,13 @@ class PlaybackController(QObject):
         for cid in ids:
             self._stop_running(cid, finished=False)
         self.audio.stop_all()
+        self.video.stop_all()
 
     def stop_cue(self, cue_id: str) -> None:
         if cue_id in self._running:
             self._stop_running(cue_id, finished=False)
         self.audio.stop_cue(cue_id)
+        self.video.stop_cue(cue_id)
 
     # ---- cue-specifieke start-logica --------------------------------------
 
@@ -190,6 +196,19 @@ class PlaybackController(QObject):
             else:
                 r.action_duration = cue.duration if cue.duration > 0 else 0.0
                 # 0 = laten lopen tot bestand op is (detecteren via audio.is_playing)
+
+        elif t == CueType.VIDEO:
+            ok, _err = self.video.play_file(
+                cue_id=cue.id,
+                file_path=cue.file_path,
+                screen_index=cue.video_output_screen,
+                fade_in=cue.video_fade_in,
+                fade_out=cue.video_fade_out,
+            )
+            if not ok:
+                r.action_duration = 0.0
+            else:
+                r.action_duration = cue.duration if cue.duration > 0 else 0.0
 
         elif t == CueType.WAIT:
             r.action_duration = cue.wait_duration
@@ -294,19 +313,42 @@ class PlaybackController(QObject):
                         # Wacht tot fade-out klaar is voor we post_wait ingaan.
                         if not self.audio.is_playing(r.cue.id):
                             finished = True
+                elif r.cue.cue_type == CueType.VIDEO:
+                    # Zelfde patroon als audio: duration > 0 of natuurlijk einde,
+                    # daarna fade-out (zit al in video-engine via stored fade_out_s).
+                    main_done = False
+                    if r.action_duration > 0:
+                        if elapsed_phase >= r.action_duration:
+                            main_done = True
+                    else:
+                        if not self.video.is_playing(r.cue.id):
+                            main_done = True
+
+                    if main_done and not r.stop_triggered:
+                        self.video.stop_cue(r.cue.id, fade_out=r.cue.video_fade_out)
+                        r.stop_triggered = True
+                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                            to_advance.append(cid)
+                        if r.cue.video_fade_out <= 0:
+                            finished = True
+                    elif r.stop_triggered:
+                        if not self.video.is_playing(r.cue.id):
+                            finished = True
                 else:
                     if elapsed_phase >= r.action_duration:
                         finished = True
-                        # Niet-audio: AUTO_FOLLOW triggert hier.
+                        # Niet-audio/video: AUTO_FOLLOW triggert hier.
                         if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
                             to_advance.append(cid)
 
                 if finished:
                     r.phase = "post_wait"
                     r.phase_started_at = now
-                    # Zorg dat er niets blijft hangen in de mixer.
+                    # Zorg dat er niets blijft hangen.
                     if r.cue.cue_type == CueType.AUDIO:
                         self.audio.stop_cue(r.cue.id)
+                    elif r.cue.cue_type == CueType.VIDEO:
+                        self.video.stop_cue(r.cue.id)
 
             elif r.phase == "post_wait":
                 if elapsed_phase >= r.cue.post_wait:

@@ -13,6 +13,7 @@ class CueType:
     omdat we ze direct in JSON opslaan."""
 
     AUDIO = "Audio"
+    VIDEO = "Video"
     GROUP = "Group"
     WAIT = "Wait"
     STOP = "Stop"
@@ -20,13 +21,11 @@ class CueType:
     MEMO = "Memo"
     START = "Start"
 
-    # Toekomstige types (nog niet geïmplementeerd in v0.3.0):
-    # VIDEO = "Video"   -> v0.6.0
-    # MIDI  = "MIDI"    -> v0.4.0
-    # OSC   = "OSC"     -> v0.4.0
+    # Toekomstige types (nog niet geïmplementeerd):
+    # MIDI  = "MIDI"    -> v0.4.x
     # DMX   = "DMX"     -> v0.5.0
 
-    ALL = [AUDIO, GROUP, WAIT, STOP, FADE, START, MEMO]
+    ALL = [AUDIO, VIDEO, GROUP, WAIT, STOP, FADE, START, MEMO]
 
 
 class ContinueMode:
@@ -70,6 +69,11 @@ class Cue:
     audio_end_offset: float = 0.0
     audio_fade_in: float = 0.0   # s, 0 = hard in
     audio_fade_out: float = 0.0  # s, 0 = hard out
+
+    # Video (v0.6.0 MVP)
+    video_output_screen: int = 0     # index in QGuiApplication.screens()
+    video_fade_in: float = 0.0       # s, 0 = hard in
+    video_fade_out: float = 0.0      # s, 0 = fade-to-black uit
 
     # Fade-target
     target_cue_id: str = ""    # voor Stop, Fade, Start

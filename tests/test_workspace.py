@@ -30,6 +30,11 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
                    target_cue_id=target,
                    continue_mode=ContinueMode.AUTO_CONTINUE,
                    trigger_osc="/livefire/go/start"))
+    ws.add_cue(Cue(cue_type=CueType.VIDEO, name="movie",
+                   file_path="C:/tmp/movie.mp4",
+                   video_output_screen=1,
+                   video_fade_in=0.5,
+                   video_fade_out=1.5))
 
     p = tmp_path / "test.livefire"
     ws.save(p)
@@ -48,6 +53,9 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
         assert orig.audio_fade_in == got.audio_fade_in
         assert orig.audio_fade_out == got.audio_fade_out
         assert orig.trigger_osc == got.trigger_osc
+        assert orig.video_output_screen == got.video_output_screen
+        assert orig.video_fade_in == got.video_fade_in
+        assert orig.video_fade_out == got.video_fade_out
 
 
 def test_save_writes_current_format_version(tmp_path: Path):
