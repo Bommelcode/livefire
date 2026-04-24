@@ -1,6 +1,12 @@
 """Dark-theme stylesheet en kleurconstanten."""
 
-from PyQt6.QtGui import QColor
+from __future__ import annotations
+
+import tempfile
+from pathlib import Path
+
+from PyQt6.QtCore import QPointF, Qt
+from PyQt6.QtGui import QColor, QPainter, QPixmap, QPolygonF
 
 
 # ---- palette ---------------------------------------------------------------
@@ -50,7 +56,43 @@ def tint_for_row(hex_color: str, alpha: int = 110) -> QColor:
     return c
 
 
-STYLESHEET = f"""
+def _make_arrow_pixmap(direction: str, color: str = TEXT) -> str:
+    """Teken een 9×9 driehoek-pixmap en schrijf naar tempdir. Retourneert het
+    pad met forward-slashes zodat het veilig in een Qt-stylesheet url() past.
+    Qt accepteert geen border-triangle-truc voor ::up-arrow/::down-arrow; een
+    image: url() is wel betrouwbaar."""
+    size = 9
+    pm = QPixmap(size, size)
+    pm.fill(Qt.GlobalColor.transparent)
+    p = QPainter(pm)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(color))
+    if direction == "up":
+        poly = QPolygonF([QPointF(1, 7), QPointF(size - 1, 7), QPointF(size / 2, 2)])
+    else:
+        poly = QPolygonF([QPointF(1, 2), QPointF(size - 1, 2), QPointF(size / 2, 7)])
+    p.drawPolygon(poly)
+    p.end()
+    out = Path(tempfile.gettempdir()) / f"livefire_arrow_{direction}.png"
+    pm.save(str(out), "PNG")
+    return str(out).replace("\\", "/")
+
+
+def build_stylesheet() -> str:
+    """Genereer de stylesheet. Moet ná QApplication()-init worden aangeroepen
+    omdat QPixmap een GUI-context nodig heeft voor arrow-icons."""
+    arrow_up = _make_arrow_pixmap("up")
+    arrow_down = _make_arrow_pixmap("down")
+    return _STYLESHEET_TEMPLATE.format(
+        BG_DARK=BG_DARK, BG_MID=BG_MID, BG_LIGHT=BG_LIGHT,
+        TEXT=TEXT, TEXT_DIM=TEXT_DIM, ACCENT=ACCENT,
+        OK=OK, ERR=ERR, SEL_BG=SEL_BG, BORDER=BORDER,
+        ARROW_UP=arrow_up, ARROW_DOWN=arrow_down,
+    )
+
+
+_STYLESHEET_TEMPLATE = """
 QMainWindow, QWidget {{
     background-color: {BG_DARK};
     color: {TEXT};
@@ -145,6 +187,47 @@ QComboBox::drop-down {{ border: none; }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
 QComboBox:focus, QPlainTextEdit:focus {{
     border: 1px solid {ACCENT};
+}}
+
+/* Spinbox up/down knoppen. In Qt-stylesheet-mode tekent Qt géén native
+   pijl-glyph meer — we bouwen de driehoek zelf met border-triangles. */
+QSpinBox, QDoubleSpinBox {{
+    padding-right: 18px;
+}}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 16px;
+    background: {BG_LIGHT};
+    border-left: 1px solid {BORDER};
+    border-top-right-radius: 3px;
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 16px;
+    background: {BG_LIGHT};
+    border-left: 1px solid {BORDER};
+    border-top: 1px solid {BORDER};
+    border-bottom-right-radius: 3px;
+}}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+    background: #3d3d3d;
+}}
+QSpinBox::up-button:pressed, QDoubleSpinBox::up-button:pressed,
+QSpinBox::down-button:pressed, QDoubleSpinBox::down-button:pressed {{
+    background: {SEL_BG};
+}}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+    image: url({ARROW_UP});
+    width: 9px;
+    height: 9px;
+}}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+    image: url({ARROW_DOWN});
+    width: 9px;
+    height: 9px;
 }}
 
 QGroupBox {{

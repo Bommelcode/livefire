@@ -125,6 +125,8 @@ class VideoEngine(QObject):
         screen_index: int = 0,
         fade_in: float = 0.0,
         fade_out: float = 0.0,
+        start_offset: float = 0.0,
+        end_offset: float = 0.0,
     ) -> tuple[bool, str]:
         if not self.available:
             return False, _VLC_ERR or "libVLC niet beschikbaar"
@@ -147,7 +149,12 @@ class VideoEngine(QObject):
             except Exception:
                 pass
 
+        # In/uit-punt via media-opties. libVLC snapt :start-time / :stop-time.
         media = self._instance.media_new(str(path))  # type: ignore[union-attr]
+        if start_offset > 0:
+            media.add_option(f":start-time={start_offset:.3f}")
+        if end_offset > 0:
+            media.add_option(f":stop-time={end_offset:.3f}")
         player.set_media(media)
         player.play()
 
@@ -169,6 +176,7 @@ class VideoEngine(QObject):
             "media": media,
             "fade_anim": anim,
             "fade_out_s": fade_out,
+            "stop_ms": int(end_offset * 1000) if end_offset > 0 else 0,
         }
 
         # Detecteer natuurlijk einde via VLC event.
@@ -203,7 +211,23 @@ class VideoEngine(QObject):
             self._hard_stop(cid)
 
     def is_playing(self, cue_id: str) -> bool:
-        return cue_id in self._playing
+        """True zolang VLC actief rendert. False zodra de player in
+        Ended/Stopped/Error-state komt — zo detecteert de controller
+        natuurlijk einde (voor AUTO_FOLLOW en fade-out-trigger)."""
+        entry = self._playing.get(cue_id)
+        if entry is None:
+            return False
+        if not _VLC_OK:
+            return True
+        try:
+            state = entry["player"].get_state()
+        except Exception:
+            return True
+        return state not in (
+            vlc.State.Ended,    # type: ignore[union-attr]
+            vlc.State.Stopped,  # type: ignore[union-attr]
+            vlc.State.Error,    # type: ignore[union-attr]
+        )
 
     def get_remaining(self, cue_id: str) -> float | None:
         entry = self._playing.get(cue_id)
@@ -217,7 +241,11 @@ class VideoEngine(QObject):
             return None
         if length_ms <= 0:
             return None
-        return max(0.0, (length_ms - pos_ms) / 1000.0)
+        # Respecteer :stop-time: bij een getrimd uit-punt moet de countdown
+        # daarvandaan tellen, niet vanaf de file-lengte.
+        stop_ms = entry.get("stop_ms") or 0
+        effective_end_ms = stop_ms if 0 < stop_ms <= length_ms else length_ms
+        return max(0.0, (effective_end_ms - pos_ms) / 1000.0)
 
     def shutdown(self) -> None:
         self.stop_all()

@@ -374,8 +374,12 @@ class MainWindow(QMainWindow):
         # op, zodat de inspector multi-select kan tonen.
         self.inspector.set_cues(self.cue_list.selected_cues())
 
-    def _on_inspector_changed(self, _cue: Cue) -> None:
-        self.cue_list.refresh()
+    def _on_inspector_changed(self, cue: Cue) -> None:
+        # Targeted update per cue zodat keyboard-focus op inspector-spinboxen
+        # niet naar de cuelist verspringt bij elke value-change. Bij multi-
+        # select doen we 'm voor alle geselecteerde cues.
+        for c in self.inspector.cues or [cue]:
+            self.cue_list.update_cue_display(c.id)
         self._sync_title()
 
     def _on_cue_state_changed(self, cue_id: str) -> None:

@@ -74,6 +74,9 @@ class Cue:
     video_output_screen: int = 0     # index in QGuiApplication.screens()
     video_fade_in: float = 0.0       # s, 0 = hard in
     video_fade_out: float = 0.0      # s, 0 = fade-to-black uit
+    video_start_offset: float = 0.0  # in-punt in seconden (0 = vanaf begin)
+    video_end_offset: float = 0.0    # uit-punt in seconden (0 = tot einde)
+    video_file_duration: float = 0.0 # cache van file-duur; auto-gevuld door preview
 
     # Fade-target
     target_cue_id: str = ""    # voor Stop, Fade, Start

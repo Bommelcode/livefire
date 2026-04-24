@@ -204,6 +204,8 @@ class PlaybackController(QObject):
                 screen_index=cue.video_output_screen,
                 fade_in=cue.video_fade_in,
                 fade_out=cue.video_fade_out,
+                start_offset=cue.video_start_offset,
+                end_offset=cue.video_end_offset,
             )
             if not ok:
                 r.action_duration = 0.0

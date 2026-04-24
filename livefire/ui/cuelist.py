@@ -118,13 +118,25 @@ class CueListWidget(QTreeWidget):
         self._apply_playhead_style()
 
     def _make_item(self, cue: Cue, index: int) -> QTreeWidgetItem:
+        if cue.cue_type == CueType.VIDEO:
+            # Trim bepaalt effectieve duur:
+            # (end - start) als end > 0, anders (file_duration - start) als de
+            # preview 'm gecachet heeft, anders user-set cue.duration.
+            if cue.video_end_offset > 0:
+                dur_value = max(0.0, cue.video_end_offset - cue.video_start_offset)
+            elif cue.video_file_duration > 0:
+                dur_value = max(0.0, cue.video_file_duration - cue.video_start_offset)
+            else:
+                dur_value = cue.duration
+        elif cue.cue_type == CueType.WAIT:
+            dur_value = cue.wait_duration
+        else:
+            dur_value = cue.duration
         item = QTreeWidgetItem([
             cue.cue_number or str(index + 1),
             cue.cue_type,
             cue.name or "(naamloos)",
-            _fmt_duration(cue.duration if cue.cue_type == CueType.AUDIO else
-                          cue.wait_duration if cue.cue_type == CueType.WAIT else
-                          cue.duration),
+            _fmt_duration(dur_value),
             ContinueMode.LABELS.get(cue.continue_mode, ""),
             cue.state,
         ])
@@ -154,6 +166,50 @@ class CueListWidget(QTreeWidget):
                 color = STATE_COLORS.get(cue.state, QColor("#888"))
                 item.setForeground(5, QBrush(color))
                 return
+
+    def update_cue_display(self, cue_id: str) -> None:
+        """Update álle zichtbare kolommen van één cue zonder clear/rebuild.
+        Gebruikt door de inspector zodat keyboard-focus op spinboxen niet
+        verspringt als de gebruiker waardes aanpast."""
+        for i in range(self.topLevelItemCount()):
+            item = self.topLevelItem(i)
+            if item.data(0, Qt.ItemDataRole.UserRole) != cue_id:
+                continue
+            cue = self.workspace.find(cue_id)
+            if cue is None:
+                return
+            # Duur (zelfde logica als _make_item)
+            if cue.cue_type == CueType.VIDEO:
+                if cue.video_end_offset > 0:
+                    dur_value = max(0.0, cue.video_end_offset - cue.video_start_offset)
+                elif cue.video_file_duration > 0:
+                    dur_value = max(0.0, cue.video_file_duration - cue.video_start_offset)
+                else:
+                    dur_value = cue.duration
+            elif cue.cue_type == CueType.WAIT:
+                dur_value = cue.wait_duration
+            else:
+                dur_value = cue.duration
+            item.setText(0, cue.cue_number or str(i + 1))
+            item.setText(1, cue.cue_type)
+            item.setText(2, cue.name or "(naamloos)")
+            item.setText(3, _fmt_duration(dur_value))
+            item.setText(4, ContinueMode.LABELS.get(cue.continue_mode, ""))
+            item.setText(5, cue.state)
+            state_color = STATE_COLORS.get(cue.state, QColor("#888"))
+            item.setForeground(5, QBrush(state_color))
+            # Kleur-balk bijwerken
+            if cue.color:
+                full = QBrush(QColor(cue.color))
+                tint = QBrush(tint_for_row(cue.color))
+                item.setBackground(0, full)
+                for col in range(1, len(COLUMNS)):
+                    item.setBackground(col, tint)
+            else:
+                empty = QBrush()
+                for col in range(len(COLUMNS)):
+                    item.setBackground(col, empty)
+            return
 
     # ---- selectie & playhead ----------------------------------------------
 

@@ -19,6 +19,7 @@ from ..cues import Cue, CueType, ContinueMode
 from ..engines.video import list_screens
 from ..workspace import Workspace
 from .style import CUE_COLORS
+from .video_preview import VideoPreviewWidget
 
 
 def _swatch_icon(hex_color: str, size: int = 14) -> QIcon:
@@ -46,6 +47,9 @@ class InspectorWidget(QWidget):
     _PER_CUE_ATTRS = frozenset({
         "cue_number", "name", "file_path", "notes", "target_cue_id",
         "trigger_osc",
+        # Trim-punten zijn bestand-specifiek; bulk-edit zou van één bestand
+        # naar ander bestand niet-zinvolle waardes toepassen.
+        "video_start_offset", "video_end_offset",
     })
 
     def __init__(self, workspace: Workspace, parent=None):
@@ -199,6 +203,25 @@ class InspectorWidget(QWidget):
         self.sp_video_fade_out.setToolTip("Fade-to-black aan het einde van de cue.")
         vl.addRow("Fade-in (s)", self.sp_video_fade_in)
         vl.addRow("Fade-out (s)", self.sp_video_fade_out)
+
+        # Thumbnail + timeline voor in/uit-punt scrubbing.
+        self.video_preview = VideoPreviewWidget()
+        vl.addRow(self.video_preview)
+
+        self.sp_video_in = self._spin_seconds(max_val=36000.0)
+        self.sp_video_in.setToolTip("In-punt (vanaf welk moment wordt afgespeeld).")
+        self.sp_video_out = self._spin_seconds(max_val=36000.0)
+        self.sp_video_out.setToolTip("Uit-punt (waar de cue eindigt). 0 = tot einde bestand.")
+        vl.addRow("In-punt (s)", self.sp_video_in)
+        vl.addRow("Uit-punt (s)", self.sp_video_out)
+
+        # Bidirectionele sync tussen timeline (drag) en spinboxes (veld).
+        self.video_preview.in_point_changed.connect(self._set_video_in_from_timeline)
+        self.video_preview.out_point_changed.connect(self._set_video_out_from_timeline)
+        self.video_preview.duration_detected.connect(self._on_video_duration_detected)
+        self.sp_video_in.valueChanged.connect(self._on_video_in_spin_changed)
+        self.sp_video_out.valueChanged.connect(self._on_video_out_spin_changed)
+
         lay.addWidget(self.grp_video)
 
         # ---- Wait ----------------------------------------------------------
@@ -290,6 +313,8 @@ class InspectorWidget(QWidget):
             self.cb_video_screen: ("video_output_screen", lambda: self.cb_video_screen.currentData()),
             self.sp_video_fade_in:  ("video_fade_in",     lambda: self.sp_video_fade_in.value()),
             self.sp_video_fade_out: ("video_fade_out",    lambda: self.sp_video_fade_out.value()),
+            self.sp_video_in:       ("video_start_offset", lambda: self.sp_video_in.value()),
+            self.sp_video_out:      ("video_end_offset",   lambda: self.sp_video_out.value()),
         }
 
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
@@ -301,7 +326,8 @@ class InspectorWidget(QWidget):
         for w in (self.sp_pre, self.sp_dur, self.sp_post, self.sp_volume,
                   self.sp_start, self.sp_end, self.sp_fade_in, self.sp_fade_out,
                   self.sp_wait, self.sp_fade_target,
-                  self.sp_video_fade_in, self.sp_video_fade_out):
+                  self.sp_video_fade_in, self.sp_video_fade_out,
+                  self.sp_video_in, self.sp_video_out):
             w.valueChanged.connect(self._on_any_change)
         self.sp_loops.valueChanged.connect(self._on_any_change)
         self.cb_type.currentTextChanged.connect(self._on_type_change)
@@ -410,6 +436,16 @@ class InspectorWidget(QWidget):
             self.cb_video_screen.setCurrentIndex(idx_screen)
         self.sp_video_fade_in.setValue(cue.video_fade_in)
         self.sp_video_fade_out.setValue(cue.video_fade_out)
+        self.sp_video_in.setValue(cue.video_start_offset)
+        self.sp_video_out.setValue(cue.video_end_offset)
+
+        # Thumbnail-preview alleen laden voor single-select VIDEO-cues.
+        if not multi and cue.cue_type == CueType.VIDEO and cue.file_path:
+            self.video_preview.load(
+                cue.file_path, cue.video_start_offset, cue.video_end_offset,
+            )
+        else:
+            self.video_preview.load("", 0.0, 0.0)
 
         self.refresh_targets()
         idx = self.cb_target.findData(cue.target_cue_id)
@@ -473,6 +509,54 @@ class InspectorWidget(QWidget):
         if idx < 0:
             idx = 0  # "Geen"
         self.cb_color.setCurrentIndex(idx)
+
+    def _on_video_duration_detected(self, seconds: float) -> None:
+        """Preview ontdekte de file-duur; cache 'm op de cue zodat de cuelist
+        de 'Duur'-kolom correct kan tonen ook als video_end_offset = 0.
+        Bewust géén workspace.dirty — dit is een metadata-cache, geen edit."""
+        if self.cue is None or self.cue.cue_type != CueType.VIDEO:
+            return
+        if abs(self.cue.video_file_duration - seconds) < 0.01:
+            return  # al gecached
+        self.cue.video_file_duration = seconds
+        # Signaal naar mainwindow voor cuelist-refresh, maar workspace blijft schoon.
+        self.cue_changed.emit(self.cue)
+
+    def _set_video_in_from_timeline(self, seconds: float) -> None:
+        self.sp_video_in.blockSignals(True)
+        self.sp_video_in.setValue(seconds)
+        self.sp_video_in.blockSignals(False)
+        if not self._updating and self.cues:
+            for c in self.cues[:1]:  # file_path-samenhangend → per-cue veld
+                c.video_start_offset = seconds
+            self.workspace.dirty = True
+            self.cue_changed.emit(self.cues[0])
+
+    def _set_video_out_from_timeline(self, seconds: float) -> None:
+        self.sp_video_out.blockSignals(True)
+        self.sp_video_out.setValue(seconds)
+        self.sp_video_out.blockSignals(False)
+        if not self._updating and self.cues:
+            for c in self.cues[:1]:
+                c.video_end_offset = seconds
+            self.workspace.dirty = True
+            self.cue_changed.emit(self.cues[0])
+
+    def _on_video_in_spin_changed(self, v: float) -> None:
+        """Spinbox bewoog het in-punt — sync timeline én scrub preview naar
+        dat frame zodat je ziet waar je begint."""
+        out = self.sp_video_out.value() or self.video_preview.timeline.out_point()
+        self.video_preview.set_markers(v, out)
+        self.video_preview.scrub_to(v)
+
+    def _on_video_out_spin_changed(self, v: float) -> None:
+        """Spinbox bewoog het uit-punt — scrub naar dat frame. v=0 betekent
+        'tot einde', dan scrubben we naar de totale duur."""
+        in_ = self.sp_video_in.value()
+        tl_out = self.video_preview.timeline.out_point()
+        visual_out = v if v > 0 else tl_out
+        self.video_preview.set_markers(in_, v)
+        self.video_preview.scrub_to(visual_out)
 
     def _browse_video(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
