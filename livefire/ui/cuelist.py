@@ -170,6 +170,11 @@ class CueListWidget(QTreeWidget):
         for i in range(self.topLevelItemCount()):
             item = self.topLevelItem(i)
             if item.data(0, Qt.ItemDataRole.UserRole) == cue_id:
+                # ExtendedSelection: setCurrentItem alléén zet hem niet als
+                # geselecteerd. Voor keyboard-navigatie en ons playhead-from-
+                # selection-mechanisme moet de selectie ook echt op dit item.
+                self.clearSelection()
+                item.setSelected(True)
                 self.setCurrentItem(item)
                 return
 
@@ -194,6 +199,12 @@ class CueListWidget(QTreeWidget):
     def _on_selection(self) -> None:
         cues = self.selected_cues()
         self.cue_selected.emit(cues[0] if cues else None)
+        # QLab-gedrag: selectie stuurt de playhead. Enkelklik / pijltjes zetten
+        # de playhead zonder GO; dubbelklik blijft set_playhead + go_requested.
+        if cues:
+            idx = self.workspace.index_of(cues[0].id)
+            if idx >= 0 and idx != self._playhead_index:
+                self.set_playhead(idx)
 
     def _on_double_click(self, item: QTreeWidgetItem, _col: int) -> None:
         cue_id = item.data(0, Qt.ItemDataRole.UserRole)

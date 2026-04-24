@@ -304,10 +304,17 @@ class MainWindow(QMainWindow):
         if self.controller.playhead_index >= len(self.ws.cues):
             return
         self.controller.go()
-        self.cue_list.set_playhead(self.controller.playhead_index)
+        new_idx = self.controller.playhead_index
+        self.cue_list.set_playhead(new_idx)
+        # Selectie en focus volgen de playhead zodat pijltjestoetsen en Spatie
+        # blijven werken zonder dat de gebruiker eerst een cue moet aanklikken.
+        if 0 <= new_idx < len(self.ws.cues):
+            self.cue_list.select_cue(self.ws.cues[new_idx].id)
+        self.cue_list.setFocus()
 
     def action_stop_all(self) -> None:
         self.controller.stop_all()
+        self.cue_list.setFocus()
 
     # ---- actions: help ----------------------------------------------------
 
