@@ -4,6 +4,7 @@ niet samengedrukt worden (zelfde les als v0.2)."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from PyQt6.QtCore import Qt, pyqtSignal, QSize
@@ -380,16 +381,23 @@ class InspectorWidget(QWidget):
             "Audio (*.wav *.mp3 *.flac *.ogg *.aiff *.aif);;Alle bestanden (*)",
         )
         if path:
-            self.ed_path.setText(path)
-            # Vul de naam automatisch in als die leeg is óf nog de auto-
-            # gegenereerde default heeft (bv. "Audio 3"). Zodra de gebruiker
-            # een eigen naam heeft getypt laten we die met rust.
+            # Check vóór we het pad updaten of de naam auto-gegenereerd is.
+            # Drie gevallen waarin we de naam willen (her-)vullen:
+            #   1. leeg
+            #   2. een default "{CueType} {n}" (ook als de cue-type inmiddels
+            #      is veranderd)
+            #   3. gelijk aan de stem van het huidige bestand (dan was 'ie
+            #      eerder auto-gevuld en willen we bij file-vervanging mee)
+            old_path = self.ed_path.text().strip()
             name = self.ed_name.text().strip()
-            auto_default = (
-                self.cue is not None
-                and name == f"{self.cue.cue_type} {self.cue.cue_number}".strip()
-            )
-            if not name or auto_default:
+            auto_default = bool(re.match(
+                r"^(?:" + "|".join(CueType.ALL) + r") \d+$", name
+            ))
+            from_old_file = bool(old_path) and name == Path(old_path).stem
+            should_fill = not name or auto_default or from_old_file
+
+            self.ed_path.setText(path)
+            if should_fill:
                 self.ed_name.setText(Path(path).stem)
 
     # ---- trigger-learn ----------------------------------------------------
