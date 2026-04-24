@@ -7,13 +7,15 @@ from __future__ import annotations
 from PyQt6.QtCore import QSettings
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QComboBox, QDialogButtonBox, QGroupBox,
-    QLabel, QMessageBox,
+    QLabel, QMessageBox, QSpinBox, QCheckBox,
 )
 
 from ...engines.audio import (
     AudioEngine, list_output_devices, find_device_index_by_name,
 )
 from ...engines.audio import register_status as register_audio_status
+from ...engines.osc import OscInputEngine, DEFAULT_OSC_PORT
+from ...engines.osc import register_status as register_osc_status
 
 
 SUPPORTED_SAMPLE_RATES = [44100, 48000, 96000]
@@ -23,9 +25,15 @@ DEFAULT_SAMPLE_RATE = 48000
 class PreferencesDialog(QDialog):
     """Dialog voor app-brede voorkeuren (nu: audio-device + samplerate)."""
 
-    def __init__(self, engine: AudioEngine, parent=None):
+    def __init__(
+        self,
+        engine: AudioEngine,
+        osc: OscInputEngine | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.engine = engine
+        self.osc = osc
         self.setWindowTitle("Voorkeuren")
         self.setMinimumWidth(440)
 
@@ -50,6 +58,17 @@ class PreferencesDialog(QDialog):
         form.addRow(self.lbl_hint)
 
         root.addWidget(grp)
+
+        # ---- OSC -----------------------------------------------------------
+        grp_osc = QGroupBox("OSC-input")
+        osc_form = QFormLayout(grp_osc)
+        self.chk_osc_enabled = QCheckBox("OSC-input inschakelen")
+        self.sp_osc_port = QSpinBox()
+        self.sp_osc_port.setRange(1, 65535)
+        self.sp_osc_port.setValue(DEFAULT_OSC_PORT)
+        osc_form.addRow(self.chk_osc_enabled)
+        osc_form.addRow("UDP-poort", self.sp_osc_port)
+        root.addWidget(grp_osc)
 
         # Waarden uit QSettings (of huidige engine-config als fallback).
         self._load_from_settings()
@@ -91,6 +110,13 @@ class PreferencesDialog(QDialog):
             sr_idx = self.cb_samplerate.findData(DEFAULT_SAMPLE_RATE)
         self.cb_samplerate.setCurrentIndex(max(0, sr_idx))
 
+        self.chk_osc_enabled.setChecked(
+            s.value("osc/enabled", False, type=bool)
+        )
+        self.sp_osc_port.setValue(
+            s.value("osc/port", DEFAULT_OSC_PORT, type=int)
+        )
+
     # ---- apply -------------------------------------------------------------
 
     def _apply_and_accept(self) -> None:
@@ -128,5 +154,23 @@ class PreferencesDialog(QDialog):
         # Engine-status registry bijwerken zodat statusbar en Engine-status
         # dialog het nieuwe device tonen.
         register_audio_status(self.engine)
+
+        # OSC toepassen
+        if self.osc is not None:
+            osc_enabled = self.chk_osc_enabled.isChecked()
+            osc_port = int(self.sp_osc_port.value())
+            self.osc.stop()
+            osc_detail = ""
+            if osc_enabled:
+                ok, err = self.osc.start(osc_port)
+                if not ok:
+                    QMessageBox.warning(
+                        self, "Kan OSC-input niet starten",
+                        f"{err}\n\nOSC blijft uit.",
+                    )
+                    osc_enabled = False
+            s.setValue("osc/enabled", bool(osc_enabled))
+            s.setValue("osc/port", osc_port)
+            register_osc_status(self.osc)
 
         self.accept()

@@ -21,12 +21,13 @@ from ..engines.audio import (
     register_status as register_audio_status,
     find_device_index_by_name,
 )
+from ..engines.osc import register_status as register_osc_status
 
 from .cuelist import CueListWidget
 from .inspector import InspectorWidget
 from .transport import TransportWidget
 from .dialogs import show_about, EngineStatusDialog, PreferencesDialog
-from .dialogs.preferences import DEFAULT_SAMPLE_RATE
+from .dialogs.preferences import DEFAULT_SAMPLE_RATE, DEFAULT_OSC_PORT
 
 
 class MainWindow(QMainWindow):
@@ -47,14 +48,21 @@ class MainWindow(QMainWindow):
         self.controller.cue_state_changed.connect(self._on_cue_state_changed)
         self.controller.running_changed.connect(self._on_running_changed)
 
+        # OSC-input opstarten vanuit QSettings
+        self._start_osc_from_settings()
+
         # Engine status registreren
         register_audio_status(self.controller.audio)
+        register_osc_status(self.controller.osc)
 
         # UI
         self._build_ui()
         self._build_menu()
         self._build_shortcuts()
         self._sync_title()
+
+        # Inspector krijgt een handle naar de OSC-engine voor de Learn-dialog
+        self.inspector.osc_engine = self.controller.osc
 
     # ---- build ------------------------------------------------------------
 
@@ -265,7 +273,7 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def action_preferences(self) -> None:
-        dlg = PreferencesDialog(self.controller.audio, self)
+        dlg = PreferencesDialog(self.controller.audio, self.controller.osc, self)
         if dlg.exec():
             self._refresh_statusbar()
 
@@ -281,6 +289,18 @@ class MainWindow(QMainWindow):
         sr = s.value("audio/samplerate", DEFAULT_SAMPLE_RATE, type=int)
         device = find_device_index_by_name(device_name) if device_name else None
         return AudioEngine(sample_rate=sr, device=device)
+
+    def _start_osc_from_settings(self) -> None:
+        s = QSettings()
+        if not s.value("osc/enabled", False, type=bool):
+            return
+        port = s.value("osc/port", DEFAULT_OSC_PORT, type=int)
+        ok, err = self.controller.osc.start(int(port))
+        if not ok:
+            QMessageBox.warning(
+                self, "OSC-input niet gestart",
+                f"Kon OSC niet starten op poort {port}: {err}",
+            )
 
     # ---- reactive handlers ------------------------------------------------
 

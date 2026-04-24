@@ -6,6 +6,17 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 ## [Unreleased]
 
 ### Toegevoegd
+- **OSC-input** voor cue-triggering vanaf Companion / Stream Deck / externe
+  consoles. Elke cue krijgt een optioneel `trigger_osc` veld (bv.
+  `/livefire/go/intro`); inkomende OSC-messages met dezelfde address vuren
+  de cue af via `PlaybackController.fire_cue()`. UDP-poort en enable-flag
+  zijn instelbaar via Voorkeuren (standaard 53000, default uit). Nieuwe
+  `OscInputEngine` draait in een daemon-thread met een Qt-signal zodat
+  de UI-thread de messages netjes opvangt.
+- "Learn…"-knop in de inspector bij het OSC-trigger-veld: wacht op de
+  eerstvolgende OSC-message en vult hem automatisch in.
+- `python-osc` toegevoegd aan `requirements.txt` (pure Python, geen
+  build-tools nodig).
 - Per-cue **Fade-in** en **Fade-out** (s) op Audio-cues in de inspector.
   Overlappende audio-cues geven hiermee een natuurlijke crossfade: bij
   AUTO_FOLLOW start de volgende cue zodra de main-playback van de huidige

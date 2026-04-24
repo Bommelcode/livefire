@@ -28,7 +28,8 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
                    notes="Toegang niet vergeten!"))
     ws.add_cue(Cue(cue_type=CueType.START, name="start",
                    target_cue_id=target,
-                   continue_mode=ContinueMode.AUTO_CONTINUE))
+                   continue_mode=ContinueMode.AUTO_CONTINUE,
+                   trigger_osc="/livefire/go/start"))
 
     p = tmp_path / "test.livefire"
     ws.save(p)
@@ -46,6 +47,7 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
         assert orig.continue_mode == got.continue_mode
         assert orig.audio_fade_in == got.audio_fade_in
         assert orig.audio_fade_out == got.audio_fade_out
+        assert orig.trigger_osc == got.trigger_osc
 
 
 def test_save_writes_current_format_version(tmp_path: Path):
