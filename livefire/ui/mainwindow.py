@@ -22,6 +22,7 @@ from ..engines.audio import (
     find_device_index_by_name,
 )
 from ..engines.osc import register_status as register_osc_status
+from ..engines.video import register_status as register_video_status
 
 from .cuelist import CueListWidget
 from .cuetoolbar import CueToolbar
@@ -55,6 +56,9 @@ class MainWindow(QMainWindow):
         # Engine status registreren
         register_audio_status(self.controller.audio)
         register_osc_status(self.controller.osc)
+        register_video_status(self.controller.video)
+        # VLC-audio-device uit QSettings toepassen
+        self._apply_video_audio_device_from_settings()
 
         # UI
         self._build_ui()
@@ -148,6 +152,8 @@ class MainWindow(QMainWindow):
         m_cue.setToolTipsVisible(True)
         self._add_action(m_cue, "Nieuwe Audio-cue", lambda: self.action_new_cue(CueType.AUDIO), QKeySequence("Ctrl+1"),
                          tip="Speelt een audio-bestand af met volume, loops en fades")
+        self._add_action(m_cue, "Nieuwe Video-cue", lambda: self.action_new_cue(CueType.VIDEO), QKeySequence("Ctrl+8"),
+                         tip="Speelt een video-bestand fullscreen af op het gekozen scherm (libVLC)")
         self._add_action(m_cue, "Nieuwe Fade-cue", lambda: self.action_new_cue(CueType.FADE), QKeySequence("Ctrl+2"),
                          tip="Verandert het volume van een andere (lopende) audio-cue over tijd")
         self._add_action(m_cue, "Nieuwe Wait-cue", lambda: self.action_new_cue(CueType.WAIT), QKeySequence("Ctrl+3"),
@@ -323,7 +329,10 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def action_preferences(self) -> None:
-        dlg = PreferencesDialog(self.controller.audio, self.controller.osc, self)
+        dlg = PreferencesDialog(
+            self.controller.audio, self.controller.osc,
+            self.controller.video, self,
+        )
         if dlg.exec():
             self._refresh_statusbar()
 
@@ -339,6 +348,12 @@ class MainWindow(QMainWindow):
         sr = s.value("audio/samplerate", DEFAULT_SAMPLE_RATE, type=int)
         device = find_device_index_by_name(device_name) if device_name else None
         return AudioEngine(sample_rate=sr, device=device)
+
+    def _apply_video_audio_device_from_settings(self) -> None:
+        s = QSettings()
+        dev = s.value("video/audio_device", "", type=str)
+        if dev:
+            self.controller.video.set_audio_device(dev)
 
     def _start_osc_from_settings(self) -> None:
         s = QSettings()
@@ -384,14 +399,15 @@ class MainWindow(QMainWindow):
             if ext in self._AUDIO_EXTS:
                 cue = Cue(cue_type=CueType.AUDIO, cue_number=str(n),
                           name=path.stem, file_path=str(path))
-            elif ext in self._VIDEO_EXTS or ext in self._IMAGE_EXTS:
-                kind = "Video" if ext in self._VIDEO_EXTS else "Afbeelding"
+            elif ext in self._VIDEO_EXTS:
+                cue = Cue(cue_type=CueType.VIDEO, cue_number=str(n),
+                          name=path.stem, file_path=str(path))
+            elif ext in self._IMAGE_EXTS:
                 cue = Cue(
                     cue_type=CueType.MEMO, cue_number=str(n), name=path.stem,
-                    notes=(f"[{kind}-placeholder] {path}\n\n"
-                           "Cue-type voor dit bestandstype is nog niet "
-                           "geïmplementeerd — bewaar als Memo totdat v0.6.0 "
-                           "Video-cues introduceert."),
+                    notes=(f"[Afbeelding-placeholder] {path}\n\n"
+                           "Image-cue-type is nog niet geïmplementeerd — "
+                           "bewaar als Memo."),
                 )
             else:
                 continue
