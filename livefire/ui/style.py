@@ -83,6 +83,16 @@ QTreeWidget::item {{
     border-bottom: 1px solid #242424;
 }}
 
+QTreeWidget::item:selected {{
+    background: {SEL_BG};
+    color: {TEXT};
+}}
+
+QTreeWidget::item:selected:!active {{
+    background: {SEL_BG};
+    color: {TEXT};
+}}
+
 QHeaderView::section {{
     background: {BG_LIGHT};
     color: {TEXT_DIM};

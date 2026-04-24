@@ -100,6 +100,7 @@ class MainWindow(QMainWindow):
         self.cue_list.cue_selected.connect(self._on_cue_selected)
         self.cue_list.playhead_changed.connect(self._on_playhead_changed)
         self.cue_list.go_requested.connect(self.action_go)
+        self.cue_list.files_dropped.connect(self._on_files_dropped)
         left_layout.addWidget(self.cue_list, 1)
 
         splitter.addWidget(left_side)
@@ -344,8 +345,10 @@ class MainWindow(QMainWindow):
 
     # ---- reactive handlers ------------------------------------------------
 
-    def _on_cue_selected(self, cue: Cue | None) -> None:
-        self.inspector.set_cue(cue)
+    def _on_cue_selected(self, _cue: Cue | None) -> None:
+        # We negeren de enkelvoudige parameter en halen de hele selectie
+        # op, zodat de inspector multi-select kan tonen.
+        self.inspector.set_cues(self.cue_list.selected_cues())
 
     def _on_inspector_changed(self, _cue: Cue) -> None:
         self.cue_list.refresh()
@@ -356,6 +359,38 @@ class MainWindow(QMainWindow):
 
     def _on_running_changed(self) -> None:
         self.transport.set_active_count(len(self.controller.audio.active_cue_ids()))
+
+    # Bestandstype-herkenning voor drag-and-drop. Video en afbeeldingen worden
+    # nu als placeholder-Memo ingevoegd (echte cue-types komen in v0.6.0).
+    _AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".aiff", ".aif", ".m4a"}
+    _VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
+    _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif"}
+
+    def _on_files_dropped(self, paths: list[str]) -> None:
+        added = 0
+        for p in paths:
+            path = Path(p)
+            ext = path.suffix.lower()
+            n = len(self.ws.cues) + 1
+            if ext in self._AUDIO_EXTS:
+                cue = Cue(cue_type=CueType.AUDIO, cue_number=str(n),
+                          name=path.stem, file_path=str(path))
+            elif ext in self._VIDEO_EXTS or ext in self._IMAGE_EXTS:
+                kind = "Video" if ext in self._VIDEO_EXTS else "Afbeelding"
+                cue = Cue(
+                    cue_type=CueType.MEMO, cue_number=str(n), name=path.stem,
+                    notes=(f"[{kind}-placeholder] {path}\n\n"
+                           "Cue-type voor dit bestandstype is nog niet "
+                           "geïmplementeerd — bewaar als Memo totdat v0.6.0 "
+                           "Video-cues introduceert."),
+                )
+            else:
+                continue
+            self.ws.add_cue(cue)
+            added += 1
+        if added:
+            self.cue_list.refresh()
+            self._sync_title()
 
     def _on_playhead_changed(self, index: int) -> None:
         self.controller.set_playhead(index)
