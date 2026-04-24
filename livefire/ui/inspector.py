@@ -31,14 +31,28 @@ def _swatch_icon(hex_color: str, size: int = 14) -> QIcon:
 
 
 class InspectorWidget(QWidget):
-    """Toont en wijzigt de eigenschappen van één cue."""
+    """Toont en wijzigt de eigenschappen van één of meer geselecteerde cues.
+
+    Bij multi-select worden bulk-veilige velden (kleur, timing, volume,
+    fades, continue-mode) toegepast op alle geselecteerden; per-cue velden
+    (naam, nummer, bestand, notities, target, trigger-OSC) zijn dan
+    uitgeschakeld."""
 
     cue_changed = pyqtSignal(object)   # Cue
+
+    # Velden die alleen op één cue logisch zijn. Bij multi-select worden
+    # de bijbehorende widgets uitgeschakeld.
+    _PER_CUE_ATTRS = frozenset({
+        "cue_number", "name", "file_path", "notes", "target_cue_id",
+        "trigger_osc",
+    })
 
     def __init__(self, workspace: Workspace, parent=None):
         super().__init__(parent)
         self.workspace = workspace
-        self.cue: Cue | None = None
+        self.cues: list[Cue] = []
+        self.cue: Cue | None = None  # eerste geselecteerde, compat voor
+                                      # refresh_targets / _learn_osc
         self._updating = False
 
         outer = QVBoxLayout(self)
@@ -218,6 +232,32 @@ class InspectorWidget(QWidget):
         lay.addStretch(1)
 
         # ---- wire changes --------------------------------------------------
+        # Map widget → (attribuut-naam, waarde-getter). Bij een change-signal
+        # gebruiken we sender() om de juiste entry te vinden en passen enkel
+        # dat veld toe op alle geselecteerde cues.
+        self._field_map: dict = {
+            self.ed_number:      ("cue_number",         lambda: self.ed_number.text()),
+            self.ed_name:        ("name",               lambda: self.ed_name.text()),
+            self.cb_color:       ("color",              lambda: self.cb_color.currentData() or ""),
+            self.sp_pre:         ("pre_wait",           lambda: self.sp_pre.value()),
+            self.sp_dur:         ("duration",           lambda: self.sp_dur.value()),
+            self.sp_post:        ("post_wait",          lambda: self.sp_post.value()),
+            self.cb_continue:    ("continue_mode",      lambda: self.cb_continue.currentData()),
+            self.ed_path:        ("file_path",          lambda: self.ed_path.text()),
+            self.sp_volume:      ("volume_db",          lambda: self.sp_volume.value()),
+            self.sp_loops:       ("loops",              lambda: self.sp_loops.value()),
+            self.sp_start:       ("audio_start_offset", lambda: self.sp_start.value()),
+            self.sp_end:         ("audio_end_offset",   lambda: self.sp_end.value()),
+            self.sp_fade_in:     ("audio_fade_in",      lambda: self.sp_fade_in.value()),
+            self.sp_fade_out:    ("audio_fade_out",     lambda: self.sp_fade_out.value()),
+            self.sp_wait:        ("wait_duration",      lambda: self.sp_wait.value()),
+            self.sp_fade_target: ("fade_target_db",     lambda: self.sp_fade_target.value()),
+            self.chk_fade_stops: ("fade_stops_target",  lambda: self.chk_fade_stops.isChecked()),
+            self.cb_target:      ("target_cue_id",      lambda: self.cb_target.currentData() or ""),
+            self.ed_trigger_osc: ("trigger_osc",        lambda: self.ed_trigger_osc.text().strip()),
+            self.ed_notes:       ("notes",              lambda: self.ed_notes.toPlainText()),
+        }
+
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
                   self.ed_trigger_osc):
             if isinstance(w, QPlainTextEdit):
@@ -235,7 +275,7 @@ class InspectorWidget(QWidget):
         self.cb_color.currentIndexChanged.connect(self._on_any_change)
         self.chk_fade_stops.toggled.connect(self._on_any_change)
 
-        self.set_cue(None)
+        self.set_cues([])
 
     # ---- helpers -----------------------------------------------------------
 
@@ -273,10 +313,15 @@ class InspectorWidget(QWidget):
         self._updating = False
 
     def set_cue(self, cue: Cue | None) -> None:
-        self._updating = True
-        self.cue = cue
+        """Back-compat wrapper — roept set_cues aan."""
+        self.set_cues([cue] if cue is not None else [])
 
-        if cue is None:
+    def set_cues(self, cues: list[Cue]) -> None:
+        self._updating = True
+        self.cues = list(cues)
+        self.cue = self.cues[0] if self.cues else None
+
+        if not self.cues:
             self.header.setText("Geen cue geselecteerd")
             self.grp_audio.setVisible(False)
             self.grp_wait.setVisible(False)
@@ -286,10 +331,18 @@ class InspectorWidget(QWidget):
             return
 
         self.content.setEnabled(True)
-        self.header.setText(f"{cue.cue_number or '?'}: {cue.name or '(naamloos)'}")
+        cue = self.cues[0]
+        multi = len(self.cues) > 1
 
-        self.ed_number.setText(cue.cue_number)
-        self.ed_name.setText(cue.name)
+        if multi:
+            self.header.setText(f"{len(self.cues)} cues geselecteerd")
+        else:
+            self.header.setText(f"{cue.cue_number or '?'}: {cue.name or '(naamloos)'}")
+
+        # Toon waarden van de eerste cue — bulk-edits van andere velden
+        # overschrijven alleen het gewijzigde veld, niet de rest.
+        self.ed_number.setText(cue.cue_number if not multi else "")
+        self.ed_name.setText(cue.name if not multi else "")
         self.cb_type.setCurrentText(cue.cue_type)
         self._select_color(cue.color)
 
@@ -300,7 +353,7 @@ class InspectorWidget(QWidget):
         if idx >= 0:
             self.cb_continue.setCurrentIndex(idx)
 
-        self.ed_path.setText(cue.file_path)
+        self.ed_path.setText(cue.file_path if not multi else "")
         self.sp_volume.setValue(cue.volume_db)
         self.sp_loops.setValue(cue.loops)
         self.sp_start.setValue(cue.audio_start_offset)
@@ -310,8 +363,8 @@ class InspectorWidget(QWidget):
         self.sp_wait.setValue(cue.wait_duration)
         self.sp_fade_target.setValue(cue.fade_target_db)
         self.chk_fade_stops.setChecked(cue.fade_stops_target)
-        self.ed_trigger_osc.setText(cue.trigger_osc)
-        self.ed_notes.setPlainText(cue.notes)
+        self.ed_trigger_osc.setText(cue.trigger_osc if not multi else "")
+        self.ed_notes.setPlainText(cue.notes if not multi else "")
 
         self.refresh_targets()
         idx = self.cb_target.findData(cue.target_cue_id)
@@ -319,6 +372,13 @@ class InspectorWidget(QWidget):
             self.cb_target.setCurrentIndex(idx)
 
         self._update_visibility(cue.cue_type)
+
+        # Per-cue velden uitschakelen bij multi-select.
+        for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
+                  self.ed_trigger_osc, self.cb_target, self.btn_browse,
+                  self.btn_learn_osc):
+            w.setEnabled(not multi)
+
         self._updating = False
 
     def _update_visibility(self, cue_type: str) -> None:
@@ -330,35 +390,28 @@ class InspectorWidget(QWidget):
 
     def _on_type_change(self, new_type: str) -> None:
         self._update_visibility(new_type)
-        self._on_any_change()
+        if self._updating or not self.cues:
+            return
+        for c in self.cues:
+            c.cue_type = new_type
+        self.workspace.dirty = True
+        self.cue_changed.emit(self.cues[0])
 
     def _on_any_change(self) -> None:
-        if self._updating or self.cue is None:
+        if self._updating or not self.cues:
             return
-        c = self.cue
-        c.cue_number = self.ed_number.text()
-        c.name = self.ed_name.text()
-        c.cue_type = self.cb_type.currentText()
-        c.color = self.cb_color.currentData() or ""
-        c.pre_wait = self.sp_pre.value()
-        c.duration = self.sp_dur.value()
-        c.post_wait = self.sp_post.value()
-        c.continue_mode = self.cb_continue.currentData()
-        c.file_path = self.ed_path.text()
-        c.volume_db = self.sp_volume.value()
-        c.loops = self.sp_loops.value()
-        c.audio_start_offset = self.sp_start.value()
-        c.audio_end_offset = self.sp_end.value()
-        c.audio_fade_in = self.sp_fade_in.value()
-        c.audio_fade_out = self.sp_fade_out.value()
-        c.wait_duration = self.sp_wait.value()
-        c.fade_target_db = self.sp_fade_target.value()
-        c.fade_stops_target = self.chk_fade_stops.isChecked()
-        c.target_cue_id = self.cb_target.currentData() or ""
-        c.trigger_osc = self.ed_trigger_osc.text().strip()
-        c.notes = self.ed_notes.toPlainText()
+        sender = self.sender()
+        entry = self._field_map.get(sender)
+        if entry is None:
+            return
+        attr, getter = entry
+        value = getter()
+        # Per-cue velden: alleen op de eerste (bij single-select = de enige).
+        targets = self.cues[:1] if attr in self._PER_CUE_ATTRS else self.cues
+        for c in targets:
+            setattr(c, attr, value)
         self.workspace.dirty = True
-        self.cue_changed.emit(c)
+        self.cue_changed.emit(self.cues[0])
 
     def _select_color(self, hex_color: str) -> None:
         """Selecteer de juiste preset in cb_color. Als hex_color geen preset is

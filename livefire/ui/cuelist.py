@@ -48,11 +48,18 @@ class CueListWidget(QTreeWidget):
     cue_selected = pyqtSignal(object)     # Cue | None
     playhead_changed = pyqtSignal(int)
     go_requested = pyqtSignal()
+    files_dropped = pyqtSignal(list)      # list[str] paden van gedropte bestanden
 
     def __init__(self, workspace: Workspace, parent=None):
         super().__init__(parent)
         self.workspace = workspace
         self._playhead_index = 0
+
+        # Drag-and-drop van externe bestanden. We zetten alleen AcceptDrops
+        # aan; DragEnabled laten we uit zodat QTreeWidget geen eigen interne
+        # reorder-drag doet (Ctrl+↑/↓ en de toolbar-pijltjes zijn de enige
+        # reorder-routes).
+        self.setAcceptDrops(True)
 
         self.setColumnCount(len(COLUMNS))
         self.setHeaderLabels(COLUMNS)
@@ -196,13 +203,16 @@ class CueListWidget(QTreeWidget):
             self.go_requested.emit()
 
     def keyPressEvent(self, e):
-        # Ctrl+Up/Down = verplaats
-        if e.modifiers() & Qt.KeyboardModifier.ControlModifier:
+        mods = e.modifiers()
+        if mods & Qt.KeyboardModifier.ControlModifier:
             if e.key() == Qt.Key.Key_Up:
                 self.move_selected(-1)
                 return
             if e.key() == Qt.Key.Key_Down:
                 self.move_selected(1)
+                return
+            if e.key() == Qt.Key.Key_A:
+                self.selectAll()
                 return
         super().keyPressEvent(e)
 
@@ -215,3 +225,29 @@ class CueListWidget(QTreeWidget):
         for c in cues_sorted:
             self.workspace.move(c.id, delta)
         self.refresh()
+
+    # ---- drag-and-drop ----------------------------------------------------
+
+    def dragEnterEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dragMoveEvent(self, e):
+        if e.mimeData().hasUrls():
+            e.acceptProposedAction()
+        else:
+            e.ignore()
+
+    def dropEvent(self, e):
+        md = e.mimeData()
+        if not md.hasUrls():
+            e.ignore()
+            return
+        paths = [u.toLocalFile() for u in md.urls() if u.isLocalFile()]
+        if not paths:
+            e.ignore()
+            return
+        e.acceptProposedAction()
+        self.files_dropped.emit(paths)
