@@ -34,7 +34,9 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
                    file_path="C:/tmp/movie.mp4",
                    video_output_screen=1,
                    video_fade_in=0.5,
-                   video_fade_out=1.5))
+                   video_fade_out=1.5,
+                   video_start_offset=2.0,
+                   video_end_offset=8.5))
 
     p = tmp_path / "test.livefire"
     ws.save(p)
@@ -56,6 +58,8 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
         assert orig.video_output_screen == got.video_output_screen
         assert orig.video_fade_in == got.video_fade_in
         assert orig.video_fade_out == got.video_fade_out
+        assert orig.video_start_offset == got.video_start_offset
+        assert orig.video_end_offset == got.video_end_offset
 
 
 def test_save_writes_current_format_version(tmp_path: Path):
