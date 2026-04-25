@@ -203,6 +203,14 @@ class InspectorWidget(QWidget):
         self.sp_video_fade_out.setToolTip("Fade-to-black aan het einde van de cue.")
         vl.addRow("Fade-in (s)", self.sp_video_fade_in)
         vl.addRow("Fade-out (s)", self.sp_video_fade_out)
+        # Volume voor de audio-track van de video. Range −96..0 dB; libVLC's
+        # audio_set_volume kapt boost boven 100% in de meeste builds, dus
+        # we tonen geen + waarden.
+        self.sp_video_volume = self._spin(-96.0, 0.0, 0.1, " dB")
+        self.sp_video_volume.setToolTip(
+            "Afspeelvolume van de video-audio in dB. 0 dB = origineel, −6 dB = halve amplitude."
+        )
+        vl.addRow("Volume", self.sp_video_volume)
 
         # Thumbnail + timeline voor in/uit-punt scrubbing.
         self.video_preview = VideoPreviewWidget()
@@ -315,6 +323,9 @@ class InspectorWidget(QWidget):
             self.sp_video_fade_out: ("video_fade_out",    lambda: self.sp_video_fade_out.value()),
             self.sp_video_in:       ("video_start_offset", lambda: self.sp_video_in.value()),
             self.sp_video_out:      ("video_end_offset",   lambda: self.sp_video_out.value()),
+            # Hergebruik volume_db: audio en video delen hetzelfde veld zodat
+            # je één range hebt om over na te denken (workspace blijft compat).
+            self.sp_video_volume:   ("volume_db",           lambda: self.sp_video_volume.value()),
         }
 
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
@@ -327,7 +338,8 @@ class InspectorWidget(QWidget):
                   self.sp_start, self.sp_end, self.sp_fade_in, self.sp_fade_out,
                   self.sp_wait, self.sp_fade_target,
                   self.sp_video_fade_in, self.sp_video_fade_out,
-                  self.sp_video_in, self.sp_video_out):
+                  self.sp_video_in, self.sp_video_out,
+                  self.sp_video_volume):
             w.valueChanged.connect(self._on_any_change)
         self.sp_loops.valueChanged.connect(self._on_any_change)
         self.cb_type.currentTextChanged.connect(self._on_type_change)
@@ -438,6 +450,9 @@ class InspectorWidget(QWidget):
         self.sp_video_fade_out.setValue(cue.video_fade_out)
         self.sp_video_in.setValue(cue.video_start_offset)
         self.sp_video_out.setValue(cue.video_end_offset)
+        # Volume_db is gedeeld met audio; clamp visueel tot 0 dB voor video
+        # zodat de spinbox-waarde binnen de zichtbare range valt.
+        self.sp_video_volume.setValue(min(0.0, cue.volume_db))
 
         # Thumbnail-preview alleen laden voor single-select VIDEO-cues.
         if not multi and cue.cue_type == CueType.VIDEO and cue.file_path:

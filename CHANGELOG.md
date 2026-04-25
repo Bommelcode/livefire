@@ -5,6 +5,13 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+### Toegevoegd
+- **Volume-veld op Video-cues** in de inspector (−96..0 dB, geen boost
+  omdat libVLC's audio_set_volume daar boven afkapt). Hergebruikt het
+  bestaande `volume_db`-veld zodat audio en video dezelfde dB-range
+  delen en de workspace zonder migratie compatibel blijft. dB →
+  0..100% lineaire amplitude, gezet vóór `play()` op de player.
+
 ### Verholpen
 - Geen UI-flits meer tussen twee opeenvolgende video-cues bij
   AUTO_FOLLOW. De oude `VideoWindow` wordt eerst gepauzeerd (laatste
