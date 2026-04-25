@@ -210,6 +210,7 @@ class PlaybackController(QObject):
                 start_offset=cue.video_start_offset,
                 end_offset=cue.video_end_offset,
                 volume_db=cue.volume_db,
+                hold_last_frame=cue.video_last_frame_store,
             )
             if not ok:
                 r.action_duration = 0.0
@@ -272,6 +273,23 @@ class PlaybackController(QObject):
 
         else:
             r.action_duration = 0.0
+
+        # AUTO_FOLLOW + volgende cue is een Video → preload 'm vast zodat de
+        # transitie straks naadloos is (libVLC heeft het eerste frame al
+        # gedecodeerd voor we 'm tonen).
+        if cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+            if self._playhead_index < len(self.workspace.cues):
+                nxt = self.workspace.cues[self._playhead_index]
+                if nxt.cue_type == CueType.VIDEO and nxt.file_path:
+                    self.video.preload(
+                        cue_id=nxt.id,
+                        file_path=nxt.file_path,
+                        screen_index=nxt.video_output_screen,
+                        fade_out=nxt.video_fade_out,
+                        start_offset=nxt.video_start_offset,
+                        end_offset=nxt.video_end_offset,
+                        volume_db=nxt.volume_db,
+                    )
 
         # Auto-continue: volgende cue start wanneer de actie start
         if cue.continue_mode == ContinueMode.AUTO_CONTINUE:

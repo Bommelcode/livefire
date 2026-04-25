@@ -108,6 +108,15 @@ class VideoEngine(QObject):
                 global _VLC_ERR
                 _VLC_ERR = str(e)
         self._playing: dict[str, dict] = {}   # cue_id → {"player", "window", "fade_anim"}
+        # Preloaded entries: window + player al gemaakt, eerste frame
+        # gedecodeerd en gepauzeerd, venster nog onzichtbaar (opacity 0).
+        # Bij play_file pakken we de preload op zodat de switch naadloos is.
+        self._preloaded: dict[str, dict] = {}
+        # 'Lingering' vensters blijven na een cue-einde fullscreen staan
+        # (zwart of laatste frame, afhankelijk van last_frame_store) zodat
+        # we tussen manual GO's niet terug naar de UI flitsen. Worden
+        # opgeruimd zodra een nieuwe cue start of bij stop_all().
+        self._lingering: dict[str, dict] = {}
         self._audio_device: str = ""
 
     @property
@@ -128,46 +137,45 @@ class VideoEngine(QObject):
         start_offset: float = 0.0,
         end_offset: float = 0.0,
         volume_db: float = 0.0,
+        hold_last_frame: bool = False,
     ) -> tuple[bool, str]:
         if not self.available:
             return False, _VLC_ERR or "libVLC niet beschikbaar"
-        path = Path(file_path)
-        if not path.is_file():
-            return False, f"Bestand niet gevonden: {path}"
         # Bestaande player voor deze cue? Stop eerst.
         if cue_id in self._playing:
             self.stop_cue(cue_id, fade_out=0.0)
 
-        window = VideoWindow(screen_index=screen_index)
+        # Preloaded entry voor deze cue? Switch er direct naar — eerste
+        # frame is al gedecodeerd, dus geen zwart-flits.
+        if cue_id in self._preloaded:
+            entry = self._preloaded.pop(cue_id)
+            entry["hold_last_frame"] = hold_last_frame
+            self._activate_preloaded(cue_id, entry, fade_in)
+            return True, ""
+
+        path = Path(file_path)
+        if not path.is_file():
+            return False, f"Bestand niet gevonden: {path}"
+
+        entry = self._build_entry(
+            cue_id, path, screen_index, fade_out,
+            start_offset, end_offset, volume_db,
+        )
+        if entry is None:
+            return False, "Kon player niet aanmaken"
+        entry["hold_last_frame"] = hold_last_frame
+
+        window = entry["window"]
         window.showFullScreen()
         QGuiApplication.processEvents()
+        # Ruim lingering windows van vorige cues op pas NA showFullScreen,
+        # zodat de nieuwe window er bovenop ligt en we geen UI-flits krijgen.
+        self._clear_all_lingering()
+        entry["player"].play()
 
-        player = self._instance.media_player_new()  # type: ignore[union-attr]
-        player.set_hwnd(window.hwnd_id())
-        if self._audio_device:
-            try:
-                player.audio_output_device_set(None, self._audio_device)
-            except Exception:
-                pass
-
-        # In/uit-punt via media-opties. libVLC snapt :start-time / :stop-time.
-        media = self._instance.media_new(str(path))  # type: ignore[union-attr]
-        if start_offset > 0:
-            media.add_option(f":start-time={start_offset:.3f}")
-        if end_offset > 0:
-            media.add_option(f":stop-time={end_offset:.3f}")
-        player.set_media(media)
-        # Volume zetten vóór play() heeft op sommige libVLC-builds geen effect;
-        # we doen het ná play() én via set_media. Conversie dB → 0..100% (lineaire
-        # amplitude), boven unity clampen we omdat libVLC 100 als max behandelt.
-        try:
-            linear = 10 ** (volume_db / 20.0)
-            player.audio_set_volume(max(0, min(100, int(round(linear * 100)))))
-        except Exception:
-            pass
-        player.play()
-
-        # Fade-in via Qt window-opacity animation.
+        # Fade-in via Qt window-opacity animation; alleen als de gebruiker
+        # 'm expliciet heeft gezet. Manual GO is direct (geen wachttijd);
+        # AUTO_FOLLOW gebruikt het preload-pad voor naadloze cuts.
         if fade_in > 0:
             anim = QPropertyAnimation(window, b"windowOpacity")
             anim.setDuration(int(fade_in * 1000))
@@ -175,26 +183,150 @@ class VideoEngine(QObject):
             anim.setEndValue(1.0)
             anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
             anim.start()
+            entry["fade_anim"] = anim
         else:
             window.setWindowOpacity(1.0)
-            anim = None
 
-        self._playing[cue_id] = {
+        self._playing[cue_id] = entry
+        return True, ""
+
+    def preload(
+        self,
+        cue_id: str,
+        file_path: str,
+        screen_index: int = 0,
+        fade_out: float = 0.0,
+        start_offset: float = 0.0,
+        end_offset: float = 0.0,
+        volume_db: float = 0.0,
+    ) -> bool:
+        """Maak alvast een verborgen player + window met het eerste frame
+        gedecodeerd en gepauzeerd. Bij een latere play_file(cue_id) switchen
+        we direct naar dit venster — geen libVLC decode-flits zichtbaar.
+
+        Bedoeld voor AUTO_FOLLOW: tijdens de huidige cue laden we vast de
+        volgende. Geen-op als 'r al een preload of speel-entry voor deze cue
+        is, of als libVLC niet beschikbaar is."""
+        if not self.available:
+            return False
+        if cue_id in self._preloaded or cue_id in self._playing:
+            return False
+        path = Path(file_path)
+        if not path.is_file():
+            return False
+        entry = self._build_entry(
+            cue_id, path, screen_index, fade_out,
+            start_offset, end_offset, volume_db,
+        )
+        if entry is None:
+            return False
+
+        window = entry["window"]
+        # Toon fullscreen, maar volledig transparant zodat libVLC kan
+        # renderen op de window-handle zonder dat de gebruiker iets ziet.
+        window.setWindowOpacity(0.0)
+        window.showFullScreen()
+        QGuiApplication.processEvents()
+        entry["player"].play()
+        # Pauzeer kort hierna zodat het eerste frame klaarstaat zonder
+        # dat de video al doorloopt.
+        QTimer.singleShot(180, lambda p=entry["player"]: self._pause_if_alive(p))
+        self._preloaded[cue_id] = entry
+        return True
+
+    def _activate_preloaded(self, cue_id: str, entry: dict, fade_in: float) -> None:
+        """Maak een preloaded entry actief: hervat de playback en zet 'm
+        op opacity 1 (of fade-in als de gebruiker dat wil)."""
+        window = entry["window"]
+        player = entry["player"]
+        try:
+            player.set_pause(False)
+        except Exception:
+            pass
+        if fade_in > 0:
+            anim = QPropertyAnimation(window, b"windowOpacity")
+            anim.setDuration(int(fade_in * 1000))
+            anim.setStartValue(window.windowOpacity())
+            anim.setEndValue(1.0)
+            anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+            anim.start()
+            entry["fade_anim"] = anim
+        else:
+            window.setWindowOpacity(1.0)
+        # Ruim lingering windows van vorige cues op nu de nieuwe zichtbaar is.
+        self._clear_all_lingering()
+        self._playing[cue_id] = entry
+
+    def discard_preload(self, cue_id: str) -> None:
+        """Gooi een preload weg (bijv. user heeft de playhead verzet)."""
+        entry = self._preloaded.pop(cue_id, None)
+        if entry is None:
+            return
+        try:
+            entry["player"].stop()
+            entry["player"].release()
+        except Exception:
+            pass
+        try:
+            entry["window"].close()
+            entry["window"].deleteLater()
+        except Exception:
+            pass
+
+    def _build_entry(
+        self,
+        cue_id: str,
+        path: Path,
+        screen_index: int,
+        fade_out: float,
+        start_offset: float,
+        end_offset: float,
+        volume_db: float,
+    ) -> dict | None:
+        """Maak een (player, window, media, ...) entry maar toon 'm nog niet
+        en start nog geen playback. Wordt door zowel play_file als preload
+        gebruikt zodat de logica één plek heeft."""
+        try:
+            window = VideoWindow(screen_index=screen_index)
+            player = self._instance.media_player_new()  # type: ignore[union-attr]
+            player.set_hwnd(window.hwnd_id())
+            if self._audio_device:
+                try:
+                    player.audio_output_device_set(None, self._audio_device)
+                except Exception:
+                    pass
+            media = self._instance.media_new(str(path))  # type: ignore[union-attr]
+            if start_offset > 0:
+                media.add_option(f":start-time={start_offset:.3f}")
+            if end_offset > 0:
+                media.add_option(f":stop-time={end_offset:.3f}")
+            player.set_media(media)
+            try:
+                linear = 10 ** (volume_db / 20.0)
+                player.audio_set_volume(max(0, min(100, int(round(linear * 100)))))
+            except Exception:
+                pass
+            em = player.event_manager()
+            em.event_attach(
+                vlc.EventType.MediaPlayerEndReached,  # type: ignore[union-attr]
+                lambda _e, cid=cue_id: QTimer.singleShot(0, lambda: self._on_end_reached(cid)),
+            )
+        except Exception:
+            return None
+        return {
             "player": player,
             "window": window,
             "media": media,
-            "fade_anim": anim,
+            "fade_anim": None,
             "fade_out_s": fade_out,
             "stop_ms": int(end_offset * 1000) if end_offset > 0 else 0,
         }
 
-        # Detecteer natuurlijk einde via VLC event.
-        em = player.event_manager()
-        em.event_attach(
-            vlc.EventType.MediaPlayerEndReached,  # type: ignore[union-attr]
-            lambda _e, cid=cue_id: QTimer.singleShot(0, lambda: self._on_end_reached(cid)),
-        )
-        return True, ""
+    def _pause_if_alive(self, player) -> None:
+        try:
+            player.set_pause(True)
+        except Exception:
+            pass
 
     def stop_cue(self, cue_id: str, fade_out: float = 0.0) -> None:
         entry = self._playing.get(cue_id)
@@ -218,6 +350,9 @@ class VideoEngine(QObject):
     def stop_all(self) -> None:
         for cid in list(self._playing.keys()):
             self._hard_stop(cid)
+        for cid in list(self._preloaded.keys()):
+            self.discard_preload(cid)
+        self._clear_all_lingering()
 
     def is_playing(self, cue_id: str) -> bool:
         """True zolang VLC actief rendert. False zodra de player in
@@ -272,32 +407,42 @@ class VideoEngine(QObject):
         if entry is None:
             return
         player = entry.get("player")
-        window = entry.get("window")
-        # Pauzeer eerst zodat het laatste frame zichtbaar blijft; ruim daarna
-        # met een korte delay op. Bij AUTO_FOLLOW van video → video heeft de
-        # volgende videowindow zo de tijd om fullscreen op te komen vóór deze
-        # weggaat — anders zie je tussendoor heel even de desktop/UI flitsen.
-        if player is not None:
-            try:
-                player.set_pause(True)
-            except Exception:
-                pass
-
-        def _cleanup() -> None:
-            try:
-                if player is not None:
+        if entry.get("hold_last_frame"):
+            # Pauzeer; window houdt het laatste frame vast tot een nieuwe
+            # cue start of stop_all() volgt.
+            if player is not None:
+                try:
+                    player.set_pause(True)
+                except Exception:
+                    pass
+        else:
+            # Stop de player (window-achtergrond is zwart). Frame blijft
+            # daarmee zwart fullscreen tussen cues — geen UI-flits.
+            if player is not None:
+                try:
                     player.stop()
-                    player.release()
-            except Exception:
-                pass
-            try:
-                if window is not None:
-                    window.close()
-                    window.deleteLater()
-            except Exception:
-                pass
+                except Exception:
+                    pass
+        self._lingering[cue_id] = entry
 
-        QTimer.singleShot(300, _cleanup)
+    def _dispose_lingering(self, cue_id: str) -> None:
+        entry = self._lingering.pop(cue_id, None)
+        if entry is None:
+            return
+        try:
+            entry["player"].stop()
+            entry["player"].release()
+        except Exception:
+            pass
+        try:
+            entry["window"].close()
+            entry["window"].deleteLater()
+        except Exception:
+            pass
+
+    def _clear_all_lingering(self) -> None:
+        for cid in list(self._lingering.keys()):
+            self._dispose_lingering(cid)
 
     def _on_end_reached(self, cue_id: str) -> None:
         """Draait op UI-thread via QTimer.singleShot. Signaleer aan de

@@ -11,11 +11,17 @@ from PyQt6.QtWidgets import (
 )
 
 from ..cues import Cue, CueType, ContinueMode
+from ..i18n import t
 from ..workspace import Workspace
 from .style import STATE_COLORS, ACCENT, TEXT_DIM, tint_for_row
 
 
-COLUMNS = ["Nr", "Type", "Naam", "Duur", "Continue", "Status"]
+def _columns() -> list[str]:
+    return [t("col.nr"), t("col.type"), t("col.name"),
+            t("col.duration"), t("col.continue"), t("col.state")]
+
+
+COLUMNS = _columns()
 
 
 class _CueRowDelegate(QStyledItemDelegate):
@@ -134,11 +140,11 @@ class CueListWidget(QTreeWidget):
             dur_value = cue.duration
         item = QTreeWidgetItem([
             cue.cue_number or str(index + 1),
-            cue.cue_type,
+            t(f"cuetype.{cue.cue_type}"),
             cue.name or "(naamloos)",
             _fmt_duration(dur_value),
-            ContinueMode.LABELS.get(cue.continue_mode, ""),
-            cue.state,
+            ContinueMode.label(cue.continue_mode),
+            t(f"state.{cue.state}"),
         ])
         item.setData(0, Qt.ItemDataRole.UserRole, cue.id)
         # Kleur status-cel
@@ -162,7 +168,7 @@ class CueListWidget(QTreeWidget):
                 cue = self.workspace.find(cue_id)
                 if cue is None:
                     return
-                item.setText(5, cue.state)
+                item.setText(5, t(f"state.{cue.state}"))
                 color = STATE_COLORS.get(cue.state, QColor("#888"))
                 item.setForeground(5, QBrush(color))
                 return
@@ -191,11 +197,11 @@ class CueListWidget(QTreeWidget):
             else:
                 dur_value = cue.duration
             item.setText(0, cue.cue_number or str(i + 1))
-            item.setText(1, cue.cue_type)
+            item.setText(1, t(f"cuetype.{cue.cue_type}"))
             item.setText(2, cue.name or "(naamloos)")
             item.setText(3, _fmt_duration(dur_value))
-            item.setText(4, ContinueMode.LABELS.get(cue.continue_mode, ""))
-            item.setText(5, cue.state)
+            item.setText(4, ContinueMode.label(cue.continue_mode))
+            item.setText(5, t(f"state.{cue.state}"))
             state_color = STATE_COLORS.get(cue.state, QColor("#888"))
             item.setForeground(5, QBrush(state_color))
             # Kleur-balk bijwerken
