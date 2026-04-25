@@ -166,17 +166,19 @@ class VideoEngine(QObject):
         entry["hold_last_frame"] = hold_last_frame
 
         window = entry["window"]
+        # Als er een lingering frame staat (zwart of last-frame van een
+        # vorige cue): laat die zichtbaar tot libVLC een eerste frame heeft.
+        # Anders zien we kort zwart van onze nieuwe (nog lege) window.
+        has_linger = bool(self._lingering)
+        if has_linger:
+            window.setWindowOpacity(0.0)
         window.showFullScreen()
         QGuiApplication.processEvents()
-        # Ruim lingering windows van vorige cues op pas NA showFullScreen,
-        # zodat de nieuwe window er bovenop ligt en we geen UI-flits krijgen.
-        self._clear_all_lingering()
         entry["player"].play()
 
-        # Fade-in via Qt window-opacity animation; alleen als de gebruiker
-        # 'm expliciet heeft gezet. Manual GO is direct (geen wachttijd);
-        # AUTO_FOLLOW gebruikt het preload-pad voor naadloze cuts.
         if fade_in > 0:
+            # Expliciete user-fade: oude lingering meteen weg, fade van 0→1.
+            self._clear_all_lingering()
             anim = QPropertyAnimation(window, b"windowOpacity")
             anim.setDuration(int(fade_in * 1000))
             anim.setStartValue(0.0)
@@ -184,8 +186,22 @@ class VideoEngine(QObject):
             anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
             anim.start()
             entry["fade_anim"] = anim
+        elif has_linger:
+            # Geef libVLC ~220 ms om het eerste frame te decoderen achter
+            # onze (transparante) nieuwe window. Daarna onthullen we 'm en
+            # ruimen we pas een tikje later de lingering frame op — die
+            # extra overlap voorkomt dat er één paint-tick zwart te zien is
+            # tussen "nieuwe op 1" en "oude verdwijnt".
+            def _reveal(cid: str = cue_id) -> None:
+                if cid not in self._playing:
+                    return
+                self._playing[cid]["window"].setWindowOpacity(1.0)
+                QTimer.singleShot(60, self._clear_all_lingering)
+            QTimer.singleShot(220, _reveal)
         else:
+            # Eerste cue na stilstand: meteen zichtbaar, geen wachttijd.
             window.setWindowOpacity(1.0)
+            self._clear_all_lingering()
 
         self._playing[cue_id] = entry
         return True, ""
