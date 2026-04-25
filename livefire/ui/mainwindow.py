@@ -22,6 +22,7 @@ from ..engines.audio import (
     find_device_index_by_name,
 )
 from ..engines.osc import register_status as register_osc_status
+from ..engines.powerpoint import register_status as register_powerpoint_status
 from ..engines.video import register_status as register_video_status
 
 from .cuelist import CueListWidget
@@ -57,6 +58,7 @@ class MainWindow(QMainWindow):
         register_audio_status(self.controller.audio)
         register_osc_status(self.controller.osc)
         register_video_status(self.controller.video)
+        register_powerpoint_status(self.controller.powerpoint)
         # VLC-audio-device uit QSettings toepassen
         self._apply_video_audio_device_from_settings()
 
@@ -154,6 +156,8 @@ class MainWindow(QMainWindow):
                          tip="Speelt een audio-bestand af met volume, loops en fades")
         self._add_action(m_cue, "Nieuwe Video-cue", lambda: self.action_new_cue(CueType.VIDEO), QKeySequence("Ctrl+8"),
                          tip="Speelt een video-bestand fullscreen af op het gekozen scherm (libVLC)")
+        self._add_action(m_cue, "Nieuwe Presentatie-cue", lambda: self.action_new_cue(CueType.PRESENTATION), QKeySequence("Ctrl+9"),
+                         tip="Stuurt een PowerPoint-presentatie aan via COM (Open / Volgende slide / Vorige / Goto / Sluit)")
         self._add_action(m_cue, "Nieuwe Fade-cue", lambda: self.action_new_cue(CueType.FADE), QKeySequence("Ctrl+2"),
                          tip="Verandert het volume van een andere (lopende) audio-cue over tijd")
         self._add_action(m_cue, "Nieuwe Wait-cue", lambda: self.action_new_cue(CueType.WAIT), QKeySequence("Ctrl+3"),
@@ -393,8 +397,10 @@ class MainWindow(QMainWindow):
     _AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".aiff", ".aif", ".m4a"}
     _VIDEO_EXTS = {".mp4", ".mov", ".avi", ".mkv", ".webm"}
     _IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif"}
+    _PPT_EXTS = {".pptx", ".ppt", ".pptm"}
 
     def _on_files_dropped(self, paths: list[str]) -> None:
+        from ..cues import PresentationAction
         added = 0
         for p in paths:
             path = Path(p)
@@ -406,6 +412,10 @@ class MainWindow(QMainWindow):
             elif ext in self._VIDEO_EXTS:
                 cue = Cue(cue_type=CueType.VIDEO, cue_number=str(n),
                           name=path.stem, file_path=str(path))
+            elif ext in self._PPT_EXTS:
+                cue = Cue(cue_type=CueType.PRESENTATION, cue_number=str(n),
+                          name=path.stem, file_path=str(path),
+                          presentation_action=PresentationAction.OPEN)
             elif ext in self._IMAGE_EXTS:
                 cue = Cue(
                     cue_type=CueType.MEMO, cue_number=str(n), name=path.stem,

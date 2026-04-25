@@ -14,6 +14,7 @@ class CueType:
 
     AUDIO = "Audio"
     VIDEO = "Video"
+    PRESENTATION = "Presentation"
     GROUP = "Group"
     WAIT = "Wait"
     STOP = "Stop"
@@ -25,7 +26,26 @@ class CueType:
     # MIDI  = "MIDI"    -> v0.4.x
     # DMX   = "DMX"     -> v0.5.0
 
-    ALL = [AUDIO, VIDEO, GROUP, WAIT, STOP, FADE, START, MEMO]
+    ALL = [AUDIO, VIDEO, PRESENTATION, GROUP, WAIT, STOP, FADE, START, MEMO]
+
+
+class PresentationAction:
+    """Sub-actie van een Presentation-cue."""
+
+    OPEN = "open"
+    NEXT = "next"
+    PREVIOUS = "previous"
+    GOTO = "goto"
+    CLOSE = "close"
+
+    LABELS = {
+        OPEN: "Open presentatie",
+        NEXT: "Volgende slide",
+        PREVIOUS: "Vorige slide",
+        GOTO: "Ga naar slide",
+        CLOSE: "Sluit presentatie",
+    }
+    ALL = [OPEN, NEXT, PREVIOUS, GOTO, CLOSE]
 
 
 class ContinueMode:
@@ -77,6 +97,10 @@ class Cue:
     video_start_offset: float = 0.0  # in-punt in seconden (0 = vanaf begin)
     video_end_offset: float = 0.0    # uit-punt in seconden (0 = tot einde)
     video_file_duration: float = 0.0 # cache van file-duur; auto-gevuld door preview
+
+    # PowerPoint-presentatie
+    presentation_action: str = PresentationAction.OPEN
+    presentation_slide: int = 1     # alleen voor GOTO
 
     # Fade-target
     target_cue_id: str = ""    # voor Stop, Fade, Start

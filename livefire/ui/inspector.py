@@ -15,7 +15,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QHBoxLayout, QLabel,
 )
 
-from ..cues import Cue, CueType, ContinueMode
+from ..cues import Cue, CueType, ContinueMode, PresentationAction
 from ..engines.video import list_screens
 from ..workspace import Workspace
 from .style import CUE_COLORS
@@ -50,6 +50,9 @@ class InspectorWidget(QWidget):
         # Trim-punten zijn bestand-specifiek; bulk-edit zou van één bestand
         # naar ander bestand niet-zinvolle waardes toepassen.
         "video_start_offset", "video_end_offset",
+        # Presentatie-actie en slide-nummer zijn per cue logisch (bulk-edit
+        # naar bv. "Volgende slide" zou álle cues onderling vervangen).
+        "presentation_action", "presentation_slide",
     })
 
     def __init__(self, workspace: Workspace, parent=None):
@@ -232,6 +235,39 @@ class InspectorWidget(QWidget):
 
         lay.addWidget(self.grp_video)
 
+        # ---- Presentation --------------------------------------------------
+        self.grp_presentation = QGroupBox("Presentatie")
+        ppl = QFormLayout(self.grp_presentation)
+        self.cb_ppt_action = QComboBox()
+        for key in PresentationAction.ALL:
+            self.cb_ppt_action.addItem(PresentationAction.LABELS[key], key)
+        self.cb_ppt_action.setToolTip(
+            "Welke actie deze cue uitvoert op PowerPoint. 'Open' laadt het\n"
+            "bestand en start de slideshow; verdere cues sturen Volgende /\n"
+            "Vorige / Goto / Sluit naar de actieve presentatie."
+        )
+        ppl.addRow("Actie", self.cb_ppt_action)
+
+        ppt_path_row = QHBoxLayout()
+        self.ed_ppt_path = QLineEdit()
+        self.ed_ppt_path.setToolTip("Pad naar het .pptx-bestand (alleen voor 'Open').")
+        self.btn_browse_ppt = QPushButton("Bladeren…")
+        self.btn_browse_ppt.clicked.connect(self._browse_ppt)
+        ppt_path_row.addWidget(self.ed_ppt_path)
+        ppt_path_row.addWidget(self.btn_browse_ppt)
+        ppt_path_container = QWidget()
+        ppt_path_container.setLayout(ppt_path_row)
+        ppl.addRow("Bestand", ppt_path_container)
+        self._ppt_path_row = ppt_path_container  # voor show/hide
+
+        self.sp_ppt_slide = QSpinBox()
+        self.sp_ppt_slide.setRange(1, 9999)
+        self.sp_ppt_slide.setToolTip("Doel-slide (alleen voor 'Ga naar slide').")
+        ppl.addRow("Slide-nummer", self.sp_ppt_slide)
+        self._ppt_form = ppl
+
+        lay.addWidget(self.grp_presentation)
+
         # ---- Wait ----------------------------------------------------------
         self.grp_wait = QGroupBox("Wait")
         wl = QFormLayout(self.grp_wait)
@@ -326,10 +362,14 @@ class InspectorWidget(QWidget):
             # Hergebruik volume_db: audio en video delen hetzelfde veld zodat
             # je één range hebt om over na te denken (workspace blijft compat).
             self.sp_video_volume:   ("volume_db",           lambda: self.sp_video_volume.value()),
+            # Presentation
+            self.cb_ppt_action:     ("presentation_action", lambda: self.cb_ppt_action.currentData()),
+            self.ed_ppt_path:       ("file_path",           lambda: self.ed_ppt_path.text()),
+            self.sp_ppt_slide:      ("presentation_slide",  lambda: self.sp_ppt_slide.value()),
         }
 
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
-                  self.ed_trigger_osc, self.ed_video_path):
+                  self.ed_trigger_osc, self.ed_video_path, self.ed_ppt_path):
             if isinstance(w, QPlainTextEdit):
                 w.textChanged.connect(self._on_any_change)
             else:
@@ -339,7 +379,7 @@ class InspectorWidget(QWidget):
                   self.sp_wait, self.sp_fade_target,
                   self.sp_video_fade_in, self.sp_video_fade_out,
                   self.sp_video_in, self.sp_video_out,
-                  self.sp_video_volume):
+                  self.sp_video_volume, self.sp_ppt_slide):
             w.valueChanged.connect(self._on_any_change)
         self.sp_loops.valueChanged.connect(self._on_any_change)
         self.cb_type.currentTextChanged.connect(self._on_type_change)
@@ -347,6 +387,8 @@ class InspectorWidget(QWidget):
         self.cb_target.currentIndexChanged.connect(self._on_any_change)
         self.cb_color.currentIndexChanged.connect(self._on_any_change)
         self.cb_video_screen.currentIndexChanged.connect(self._on_any_change)
+        self.cb_ppt_action.currentIndexChanged.connect(self._on_any_change)
+        self.cb_ppt_action.currentIndexChanged.connect(self._update_ppt_visibility)
         self.chk_fade_stops.toggled.connect(self._on_any_change)
 
         self.set_cues([])
@@ -399,6 +441,7 @@ class InspectorWidget(QWidget):
             self.header.setText("Geen cue geselecteerd")
             self.grp_audio.setVisible(False)
             self.grp_video.setVisible(False)
+            self.grp_presentation.setVisible(False)
             self.grp_wait.setVisible(False)
             self.grp_target.setVisible(False)
             self.content.setEnabled(False)
@@ -454,6 +497,13 @@ class InspectorWidget(QWidget):
         # zodat de spinbox-waarde binnen de zichtbare range valt.
         self.sp_video_volume.setValue(min(0.0, cue.volume_db))
 
+        # Presentation-velden
+        idx_action = self.cb_ppt_action.findData(cue.presentation_action)
+        if idx_action >= 0:
+            self.cb_ppt_action.setCurrentIndex(idx_action)
+        self.ed_ppt_path.setText(cue.file_path if not multi else "")
+        self.sp_ppt_slide.setValue(max(1, cue.presentation_slide))
+
         # Thumbnail-preview alleen laden voor single-select VIDEO-cues.
         if not multi and cue.cue_type == CueType.VIDEO and cue.file_path:
             self.video_preview.load(
@@ -472,7 +522,9 @@ class InspectorWidget(QWidget):
         # Per-cue velden uitschakelen bij multi-select.
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
                   self.ed_trigger_osc, self.cb_target, self.btn_browse,
-                  self.btn_learn_osc, self.ed_video_path, self.btn_browse_video):
+                  self.btn_learn_osc, self.ed_video_path, self.btn_browse_video,
+                  self.ed_ppt_path, self.btn_browse_ppt, self.cb_ppt_action,
+                  self.sp_ppt_slide):
             w.setEnabled(not multi)
 
         self._updating = False
@@ -480,8 +532,20 @@ class InspectorWidget(QWidget):
     def _update_visibility(self, cue_type: str) -> None:
         self.grp_audio.setVisible(cue_type == CueType.AUDIO)
         self.grp_video.setVisible(cue_type == CueType.VIDEO)
+        self.grp_presentation.setVisible(cue_type == CueType.PRESENTATION)
         self.grp_wait.setVisible(cue_type == CueType.WAIT)
         self.grp_target.setVisible(cue_type in (CueType.STOP, CueType.FADE, CueType.START))
+        self._update_ppt_visibility()
+
+    def _update_ppt_visibility(self) -> None:
+        """Toon alleen de velden die relevant zijn voor de gekozen
+        Presentation-actie (Bestand bij Open, Slide-nummer bij Goto)."""
+        action = self.cb_ppt_action.currentData()
+        # QFormLayout.setRowVisible werkt op (label, field) paren via row-index.
+        self._ppt_form.setRowVisible(self._ppt_path_row,
+                                     action == PresentationAction.OPEN)
+        self._ppt_form.setRowVisible(self.sp_ppt_slide,
+                                     action == PresentationAction.GOTO)
 
     # ---- events ------------------------------------------------------------
 
@@ -572,6 +636,24 @@ class InspectorWidget(QWidget):
         visual_out = v if v > 0 else tl_out
         self.video_preview.set_markers(in_, v)
         self.video_preview.scrub_to(visual_out)
+
+    def _browse_ppt(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Kies presentatie", "",
+            "PowerPoint (*.pptx *.ppt *.pptm);;Alle bestanden (*)",
+        )
+        if not path:
+            return
+        old_path = self.ed_ppt_path.text().strip()
+        name = self.ed_name.text().strip()
+        auto_default = bool(re.match(
+            r"^(?:" + "|".join(CueType.ALL) + r") \d+$", name
+        ))
+        from_old_file = bool(old_path) and name == Path(old_path).stem
+        should_fill = not name or auto_default or from_old_file
+        self.ed_ppt_path.setText(path)
+        if should_fill and self.cue is not None and not len(self.cues) > 1:
+            self.ed_name.setText(Path(path).stem)
 
     def _browse_video(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

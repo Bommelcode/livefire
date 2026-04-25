@@ -18,6 +18,10 @@ python-osc>=1.8
 # Video
 python-vlc>=3.0
 
+# PowerPoint — COM-besturing voor Presentatie-cues. Vereist Windows +
+# Microsoft Office; engine degraded gracefully op machines zonder Office.
+pywin32>=305 ; sys_platform == "win32"
+
 # Optioneel nog uit te werken in komende versies:
 # pyartnet>=0.8      # DMX Art-Net (v0.5)
 # sacn>=1.9          # sACN E1.31 (v0.5)
