@@ -16,6 +16,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..cues import Cue, CueType, ContinueMode, PresentationAction
+from ..i18n import t
 from ..engines.video import list_screens
 from ..workspace import Workspace
 from .style import CUE_COLORS
@@ -86,14 +87,17 @@ class InspectorWidget(QWidget):
         lay.addWidget(self.header)
 
         # ---- Basis-groep ---------------------------------------------------
-        grp_basic = QGroupBox("Algemeen")
+        grp_basic = QGroupBox(t("group.general"))
         form = QFormLayout(grp_basic)
         self.ed_number = QLineEdit()
         self.ed_number.setToolTip("Cue-nummer zoals getoond in de cuelist. Vrij tekstveld (mag letters bevatten).")
         self.ed_name = QLineEdit()
         self.ed_name.setToolTip("Korte beschrijving voor jezelf. Heeft geen invloed op playback.")
         self.cb_type = QComboBox()
-        self.cb_type.addItems(CueType.ALL)
+        # Toon vertaalde labels, maar bewaar de originele cue-type-string als
+        # data zodat workspaces compatibel blijven.
+        for ct in CueType.ALL:
+            self.cb_type.addItem(t(f"cuetype.{ct}"), ct)
         self.cb_type.setToolTip(
             "Type van de cue:\n"
             "• Audio — speelt een bestand\n"
@@ -116,7 +120,7 @@ class InspectorWidget(QWidget):
         lay.addWidget(grp_basic)
 
         # ---- Timing --------------------------------------------------------
-        grp_timing = QGroupBox("Timing")
+        grp_timing = QGroupBox(t("group.timing"))
         fl = QFormLayout(grp_timing)
         self.sp_pre = self._spin_seconds()
         self.sp_pre.setToolTip("Wachttijd tussen GO en het daadwerkelijk starten van deze cue.")
@@ -125,8 +129,8 @@ class InspectorWidget(QWidget):
         self.sp_post = self._spin_seconds()
         self.sp_post.setToolTip("Wachttijd nadat de actie klaar is, vóór de cue 'finished' wordt.")
         self.cb_continue = QComboBox()
-        for k, v in ContinueMode.LABELS.items():
-            self.cb_continue.addItem(v, k)
+        for k in ContinueMode.KEYS:
+            self.cb_continue.addItem(ContinueMode.label(k), k)
         self.cb_continue.setToolTip(
             "Hoe de playback doorgaat:\n"
             "• Do Not Continue — stopt na deze cue\n"
@@ -140,7 +144,7 @@ class InspectorWidget(QWidget):
         lay.addWidget(grp_timing)
 
         # ---- Audio ---------------------------------------------------------
-        self.grp_audio = QGroupBox("Audio")
+        self.grp_audio = QGroupBox(t("group.audio"))
         al = QFormLayout(self.grp_audio)
         path_row = QHBoxLayout()
         self.ed_path = QLineEdit()
@@ -180,7 +184,7 @@ class InspectorWidget(QWidget):
         lay.addWidget(self.grp_audio)
 
         # ---- Video ---------------------------------------------------------
-        self.grp_video = QGroupBox("Video")
+        self.grp_video = QGroupBox(t("group.video"))
         vl = QFormLayout(self.grp_video)
         video_path_row = QHBoxLayout()
         self.ed_video_path = QLineEdit()
@@ -214,6 +218,15 @@ class InspectorWidget(QWidget):
             "Afspeelvolume van de video-audio in dB. 0 dB = origineel, −6 dB = halve amplitude."
         )
         vl.addRow("Volume", self.sp_video_volume)
+        # Wat blijft er fullscreen staan na deze cue tot een volgende start?
+        # Standaard zwart; aangevinkt = laatste frame zichtbaar (paused).
+        self.chk_video_last_frame = QCheckBox("Bewaar laatste frame na einde")
+        self.chk_video_last_frame.setToolTip(
+            "Aan: na het einde van deze cue blijft het laatste frame fullscreen "
+            "staan tot een volgende cue start.\n"
+            "Uit (default): zwart fullscreen tussen cues — geen UI-flits."
+        )
+        vl.addRow("", self.chk_video_last_frame)
 
         # Thumbnail + timeline voor in/uit-punt scrubbing.
         self.video_preview = VideoPreviewWidget()
@@ -236,7 +249,7 @@ class InspectorWidget(QWidget):
         lay.addWidget(self.grp_video)
 
         # ---- Presentation --------------------------------------------------
-        self.grp_presentation = QGroupBox("Presentatie")
+        self.grp_presentation = QGroupBox(t("group.presentation"))
         ppl = QFormLayout(self.grp_presentation)
         self.cb_ppt_action = QComboBox()
         for key in PresentationAction.ALL:
@@ -269,7 +282,7 @@ class InspectorWidget(QWidget):
         lay.addWidget(self.grp_presentation)
 
         # ---- Wait ----------------------------------------------------------
-        self.grp_wait = QGroupBox("Wait")
+        self.grp_wait = QGroupBox(t("group.wait"))
         wl = QFormLayout(self.grp_wait)
         self.sp_wait = self._spin_seconds(max_val=3600.0)
         self.sp_wait.setToolTip("Hoe lang deze Wait-cue pauzeert voor de playback doorgaat.")
@@ -277,7 +290,7 @@ class InspectorWidget(QWidget):
         lay.addWidget(self.grp_wait)
 
         # ---- Target (Stop / Fade / Start) ---------------------------------
-        self.grp_target = QGroupBox("Doel")
+        self.grp_target = QGroupBox(t("group.target"))
         tl = QFormLayout(self.grp_target)
         self.cb_target = QComboBox()
         self.cb_target.setToolTip(
@@ -295,7 +308,7 @@ class InspectorWidget(QWidget):
         lay.addWidget(self.grp_target)
 
         # ---- Triggers ------------------------------------------------------
-        self.grp_triggers = QGroupBox("Triggers")
+        self.grp_triggers = QGroupBox(t("group.triggers"))
         trg = QFormLayout(self.grp_triggers)
         osc_row = QHBoxLayout()
         self.ed_trigger_osc = QLineEdit()
@@ -318,7 +331,7 @@ class InspectorWidget(QWidget):
         lay.addWidget(self.grp_triggers)
 
         # ---- Notities ------------------------------------------------------
-        grp_notes = QGroupBox("Notities")
+        grp_notes = QGroupBox(t("group.notes"))
         nl = QVBoxLayout(grp_notes)
         self.ed_notes = QPlainTextEdit()
         self.ed_notes.setMinimumHeight(60)
@@ -362,6 +375,7 @@ class InspectorWidget(QWidget):
             # Hergebruik volume_db: audio en video delen hetzelfde veld zodat
             # je één range hebt om over na te denken (workspace blijft compat).
             self.sp_video_volume:   ("volume_db",           lambda: self.sp_video_volume.value()),
+            self.chk_video_last_frame: ("video_last_frame_store", lambda: self.chk_video_last_frame.isChecked()),
             # Presentation
             self.cb_ppt_action:     ("presentation_action", lambda: self.cb_ppt_action.currentData()),
             self.ed_ppt_path:       ("file_path",           lambda: self.ed_ppt_path.text()),
@@ -382,7 +396,7 @@ class InspectorWidget(QWidget):
                   self.sp_video_volume, self.sp_ppt_slide):
             w.valueChanged.connect(self._on_any_change)
         self.sp_loops.valueChanged.connect(self._on_any_change)
-        self.cb_type.currentTextChanged.connect(self._on_type_change)
+        self.cb_type.currentIndexChanged.connect(self._on_type_change)
         self.cb_continue.currentIndexChanged.connect(self._on_any_change)
         self.cb_target.currentIndexChanged.connect(self._on_any_change)
         self.cb_color.currentIndexChanged.connect(self._on_any_change)
@@ -390,6 +404,7 @@ class InspectorWidget(QWidget):
         self.cb_ppt_action.currentIndexChanged.connect(self._on_any_change)
         self.cb_ppt_action.currentIndexChanged.connect(self._update_ppt_visibility)
         self.chk_fade_stops.toggled.connect(self._on_any_change)
+        self.chk_video_last_frame.toggled.connect(self._on_any_change)
 
         self.set_cues([])
 
@@ -461,7 +476,9 @@ class InspectorWidget(QWidget):
         # overschrijven alleen het gewijzigde veld, niet de rest.
         self.ed_number.setText(cue.cue_number if not multi else "")
         self.ed_name.setText(cue.name if not multi else "")
-        self.cb_type.setCurrentText(cue.cue_type)
+        idx_type = self.cb_type.findData(cue.cue_type)
+        if idx_type >= 0:
+            self.cb_type.setCurrentIndex(idx_type)
         self._select_color(cue.color)
 
         self.sp_pre.setValue(cue.pre_wait)
@@ -496,6 +513,7 @@ class InspectorWidget(QWidget):
         # Volume_db is gedeeld met audio; clamp visueel tot 0 dB voor video
         # zodat de spinbox-waarde binnen de zichtbare range valt.
         self.sp_video_volume.setValue(min(0.0, cue.volume_db))
+        self.chk_video_last_frame.setChecked(cue.video_last_frame_store)
 
         # Presentation-velden
         idx_action = self.cb_ppt_action.findData(cue.presentation_action)
@@ -549,7 +567,8 @@ class InspectorWidget(QWidget):
 
     # ---- events ------------------------------------------------------------
 
-    def _on_type_change(self, new_type: str) -> None:
+    def _on_type_change(self, _idx: int = 0) -> None:
+        new_type = self.cb_type.currentData() or CueType.AUDIO
         self._update_visibility(new_type)
         if self._updating or not self.cues:
             return

@@ -55,11 +55,18 @@ class ContinueMode:
     AUTO_CONTINUE = 1   # volgende cue start zodra déze cue zijn actie start
     AUTO_FOLLOW = 2     # volgende cue start wanneer déze cue klaar is
 
-    LABELS = {
-        DO_NOT_CONTINUE: "Do Not Continue",
-        AUTO_CONTINUE: "Auto-Continue",
-        AUTO_FOLLOW: "Auto-Follow",
+    # i18n-keys; de display-labels worden via livefire.i18n.t() opgehaald
+    # zodat een taalwijziging in de UI doorkomt zonder workspace-migratie.
+    KEYS = {
+        DO_NOT_CONTINUE: "continue.do_not",
+        AUTO_CONTINUE:   "continue.auto_continue",
+        AUTO_FOLLOW:     "continue.auto_follow",
     }
+
+    @staticmethod
+    def label(mode: int) -> str:
+        from ..i18n import t
+        return t(ContinueMode.KEYS.get(mode, "continue.do_not"))
 
 
 @dataclass
@@ -97,6 +104,7 @@ class Cue:
     video_start_offset: float = 0.0  # in-punt in seconden (0 = vanaf begin)
     video_end_offset: float = 0.0    # uit-punt in seconden (0 = tot einde)
     video_file_duration: float = 0.0 # cache van file-duur; auto-gevuld door preview
+    video_last_frame_store: bool = False  # True = behoud laatste frame na einde, False = zwart
 
     # PowerPoint-presentatie
     presentation_action: str = PresentationAction.OPEN

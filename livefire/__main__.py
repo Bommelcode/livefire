@@ -7,13 +7,12 @@ import time
 from pathlib import Path
 
 import ctypes
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QCoreApplication, QSettings
 from PyQt6.QtGui import QIcon
 from PyQt6.QtWidgets import QApplication, QSplashScreen
 
 from . import APP_NAME, SETTINGS_ORG, SETTINGS_APP
-from .ui import MainWindow, build_stylesheet
-from .ui.splash import build_splash_pixmap
+from .i18n import set_language
 
 
 _ICON_PATH = Path(__file__).parent / "resources" / "icon.png"
@@ -31,6 +30,16 @@ def main() -> int:
             )
         except Exception:
             pass
+
+    # Lees taal-setting voordat we UI-modules importeren — sommige module-
+    # level strings (bv. cuelist-kolomtitels) worden bij import al gezet.
+    QCoreApplication.setOrganizationName(SETTINGS_ORG)
+    QCoreApplication.setApplicationName(SETTINGS_APP)
+    set_language(QSettings().value("app/language", "nl", type=str))
+
+    # Imports hier zodat ze de juiste taal-strings oppakken.
+    from .ui import MainWindow, build_stylesheet
+    from .ui.splash import build_splash_pixmap
 
     app = QApplication(sys.argv)
     app.setOrganizationName(SETTINGS_ORG)

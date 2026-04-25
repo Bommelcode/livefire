@@ -17,6 +17,7 @@ from ...engines.audio import register_status as register_audio_status
 from ...engines.osc import OscInputEngine, DEFAULT_OSC_PORT
 from ...engines.osc import register_status as register_osc_status
 from ...engines.video import VideoEngine, list_audio_devices as list_vlc_audio_devices
+from ...i18n import LANGUAGE, SUPPORTED as I18N_SUPPORTED, t
 
 
 SUPPORTED_SAMPLE_RATES = [44100, 48000, 96000]
@@ -105,6 +106,16 @@ class PreferencesDialog(QDialog):
         video_form.addRow("Audio-device", self.cb_video_audio)
         root.addWidget(grp_video)
 
+        # ---- Interface (taal) ---------------------------------------------
+        grp_iface = QGroupBox("Interface")
+        iface_form = QFormLayout(grp_iface)
+        self.cb_language = QComboBox()
+        self.cb_language.setToolTip(t("prefs.language.tooltip"))
+        for code, label in I18N_SUPPORTED:
+            self.cb_language.addItem(label, code)
+        iface_form.addRow(t("prefs.language"), self.cb_language)
+        root.addWidget(grp_iface)
+
         # Waarden uit QSettings (of huidige engine-config als fallback).
         self._load_from_settings()
 
@@ -155,6 +166,10 @@ class PreferencesDialog(QDialog):
         video_dev = s.value("video/audio_device", "", type=str)
         v_idx = self.cb_video_audio.findData(video_dev)
         self.cb_video_audio.setCurrentIndex(v_idx if v_idx >= 0 else 0)
+
+        lang = s.value("app/language", LANGUAGE, type=str)
+        l_idx = self.cb_language.findData(lang)
+        self.cb_language.setCurrentIndex(l_idx if l_idx >= 0 else 0)
 
     # ---- apply -------------------------------------------------------------
 
@@ -217,5 +232,18 @@ class PreferencesDialog(QDialog):
         s.setValue("video/audio_device", video_dev)
         if self.video is not None:
             self.video.set_audio_device(video_dev)
+
+        # Taal opslaan; effect na herstart (sommige strings worden bij
+        # module-import al gezet, een live re-render is voor MVP te
+        # complex).
+        new_lang = self.cb_language.currentData() or "nl"
+        old_lang = s.value("app/language", LANGUAGE, type=str)
+        s.setValue("app/language", new_lang)
+        if new_lang != old_lang:
+            QMessageBox.information(
+                self,
+                t("prefs.language.restart_title"),
+                t("prefs.language.restart_body"),
+            )
 
         self.accept()
