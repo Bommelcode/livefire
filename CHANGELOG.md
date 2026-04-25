@@ -5,7 +5,28 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-04-25
+
+Grote feature-release. Bevat alles wat de oorspronkelijke roadmap voor
+v0.3.x t/m v0.6.0 in stapjes had ingedeeld plus extra features die uit
+de praktijk zijn voortgekomen.
+
 ### Toegevoegd
+- **Naadloze video-overgangen.** Tussen video-cues blijft een fullscreen
+  window staan met zwarte achtergrond ('lingering'), zodat we tussen
+  manual GO's nooit terug naar de UI flitsen. Per-cue checkbox
+  *Bewaar laatste frame na einde* houdt de video paused op het laatste
+  frame in plaats van zwart. AUTO_FOLLOW preload't de volgende video
+  tijdens de huidige cue (verborgen window + gedecodeerd eerste frame)
+  voor een naadloze cut. Manual GO na een lingering frame: nieuwe
+  window blijft 220 ms transparant achter de paused frame zodat libVLC
+  kan decoderen, daarna in één klap zichtbaar met 60 ms cleanup-overlap.
+- **Taalkeuze NL / EN.** Nieuwe `livefire/i18n.py` met `t(key)`-lookup
+  en NL+EN-dictionaries; cuelist-kolommen, cue-types, cue-states,
+  continue-modes en inspector groep-titels worden vertaald getoond.
+  Workspaces blijven compatibel — `Audio` / `Video` / etc. blijven de
+  interne values. Voorkeuren krijgt een Interface-groep met de
+  taal-keuze; wijziging vereist app-restart.
 - **Presentatie-cue** (PowerPoint via COM). Nieuw cue-type met acties
   Open / Volgende slide / Vorige slide / Ga naar slide / Sluit. Audio,
   video, animaties, transities en hyperlinks blijven werken want
