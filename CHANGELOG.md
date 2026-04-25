@@ -6,6 +6,14 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 ## [Unreleased]
 
 ### Toegevoegd
+- **App-icoon** (`livefire/resources/icon.png`) zichtbaar in titlebar,
+  Alt-Tab en taskbar. Op Windows wordt een AppUserModelID gezet zodat
+  de taskbar liveFire niet onder "Python" groepeert.
+- **Splashscreen** bij opstart (3.5 s) met icoon, appnaam, versienummer
+  en ondertitel — verschijnt over de hoofd-UI. Help → Over liveFire
+  toont dezelfde pixmap in een dialog met sluit-knop.
+
+### Toegevoegd
 - **Volume-veld op Video-cues** in de inspector (−96..0 dB, geen boost
   omdat libVLC's audio_set_volume daar boven afkapt). Hergebruikt het
   bestaande `volume_db`-veld zodat audio en video dezelfde dB-range
