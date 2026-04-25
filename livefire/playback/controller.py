@@ -12,8 +12,8 @@ from dataclasses import dataclass, field
 
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
-from ..cues import Cue, CueType, ContinueMode
-from ..engines import AudioEngine, OscInputEngine, VideoEngine
+from ..cues import Cue, CueType, ContinueMode, PresentationAction
+from ..engines import AudioEngine, OscInputEngine, PowerPointEngine, VideoEngine
 from ..workspace import Workspace
 
 
@@ -45,6 +45,7 @@ class PlaybackController(QObject):
         audio: AudioEngine | None = None,
         osc: OscInputEngine | None = None,
         video: VideoEngine | None = None,
+        powerpoint: PowerPointEngine | None = None,
     ):
         super().__init__(parent)
         self.workspace = workspace
@@ -55,6 +56,7 @@ class PlaybackController(QObject):
         self.osc.message_received.connect(self._on_osc_message)
 
         self.video = video if video is not None else VideoEngine(self)
+        self.powerpoint = powerpoint if powerpoint is not None else PowerPointEngine(self)
 
         self._running: dict[str, _Running] = {}
         self._playhead_index: int = 0
@@ -77,6 +79,7 @@ class PlaybackController(QObject):
         self.audio.stop()
         self.osc.stop()
         self.video.shutdown()
+        self.powerpoint.shutdown()
 
     # ---- transport ---------------------------------------------------------
 
@@ -213,6 +216,20 @@ class PlaybackController(QObject):
             else:
                 r.action_duration = cue.duration if cue.duration > 0 else 0.0
 
+        elif t == CueType.PRESENTATION:
+            action = cue.presentation_action
+            if action == PresentationAction.OPEN:
+                self.powerpoint.open(cue.file_path)
+            elif action == PresentationAction.NEXT:
+                self.powerpoint.next_slide()
+            elif action == PresentationAction.PREVIOUS:
+                self.powerpoint.previous_slide()
+            elif action == PresentationAction.GOTO:
+                self.powerpoint.goto_slide(cue.presentation_slide)
+            elif action == PresentationAction.CLOSE:
+                self.powerpoint.close()
+            r.action_duration = 0.0
+
         elif t == CueType.WAIT:
             r.action_duration = cue.wait_duration
 
@@ -337,6 +354,18 @@ class PlaybackController(QObject):
                     elif r.stop_triggered:
                         if not self.video.is_playing(r.cue.id):
                             finished = True
+                elif (r.cue.cue_type == CueType.PRESENTATION
+                      and r.cue.presentation_action == PresentationAction.OPEN):
+                    # Wacht tot de slideshow klaar is (laatste slide gepasseerd
+                    # of user drukte ESC) voordat AUTO_FOLLOW de volgende
+                    # cue afvuurt. Sluit dan ook de presentatie zelf, anders
+                    # blijft de zwarte "klik om af te sluiten"-slide of de
+                    # PowerPoint-editor over onze UI staan.
+                    if not self.powerpoint.is_slideshow_active():
+                        finished = True
+                        self.powerpoint.close()
+                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                            to_advance.append(cid)
                 else:
                     if elapsed_phase >= r.action_duration:
                         finished = True

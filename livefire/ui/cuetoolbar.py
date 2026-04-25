@@ -16,30 +16,33 @@ from ..cues import CueType
 # QLab gebruikt per cue-type een eigen kleur-accent. We doen hetzelfde zodat
 # de knoppen meteen herkenbaar zijn.
 _CUE_TYPE_ACCENTS = {
-    CueType.AUDIO:  "#2980b9",  # blauw
-    CueType.VIDEO:  "#16a085",  # teal
-    CueType.FADE:   "#c9a227",  # geel
-    CueType.WAIT:   "#606060",  # grijs
-    CueType.STOP:   "#c0392b",  # rood
-    CueType.START:  "#2e8b57",  # groen
-    CueType.GROUP:  "#7d3c98",  # paars
-    CueType.MEMO:   "#d35400",  # oranje
+    CueType.AUDIO:        "#2980b9",  # blauw
+    CueType.VIDEO:        "#16a085",  # teal
+    CueType.PRESENTATION: "#b03a2e",  # PowerPoint-rood
+    CueType.FADE:         "#c9a227",  # geel
+    CueType.WAIT:         "#606060",  # grijs
+    CueType.STOP:         "#c0392b",  # rood
+    CueType.START:        "#2e8b57",  # groen
+    CueType.GROUP:        "#7d3c98",  # paars
+    CueType.MEMO:         "#d35400",  # oranje
 }
 
 _CUE_TYPE_ORDER = [
-    CueType.AUDIO, CueType.VIDEO, CueType.FADE, CueType.WAIT, CueType.STOP,
+    CueType.AUDIO, CueType.VIDEO, CueType.PRESENTATION,
+    CueType.FADE, CueType.WAIT, CueType.STOP,
     CueType.START, CueType.GROUP, CueType.MEMO,
 ]
 
 _CUE_TYPE_TIPS = {
-    CueType.AUDIO: "Nieuwe Audio-cue (Ctrl+1)",
-    CueType.VIDEO: "Nieuwe Video-cue (Ctrl+8)",
-    CueType.FADE:  "Nieuwe Fade-cue (Ctrl+2)",
-    CueType.WAIT:  "Nieuwe Wait-cue (Ctrl+3)",
-    CueType.STOP:  "Nieuwe Stop-cue (Ctrl+4)",
-    CueType.GROUP: "Nieuwe Group-cue (Ctrl+5)",
-    CueType.MEMO:  "Nieuwe Memo-cue (Ctrl+6)",
-    CueType.START: "Nieuwe Start-cue (Ctrl+7)",
+    CueType.AUDIO:        "Nieuwe Audio-cue (Ctrl+1)",
+    CueType.VIDEO:        "Nieuwe Video-cue (Ctrl+8)",
+    CueType.PRESENTATION: "Nieuwe Presentatie-cue (Ctrl+9)",
+    CueType.FADE:         "Nieuwe Fade-cue (Ctrl+2)",
+    CueType.WAIT:         "Nieuwe Wait-cue (Ctrl+3)",
+    CueType.STOP:         "Nieuwe Stop-cue (Ctrl+4)",
+    CueType.GROUP:        "Nieuwe Group-cue (Ctrl+5)",
+    CueType.MEMO:         "Nieuwe Memo-cue (Ctrl+6)",
+    CueType.START:        "Nieuwe Start-cue (Ctrl+7)",
 }
 
 

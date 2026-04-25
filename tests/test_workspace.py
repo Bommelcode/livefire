@@ -38,6 +38,12 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
                    video_start_offset=2.0,
                    video_end_offset=8.5,
                    volume_db=-12.0))
+    ws.add_cue(Cue(cue_type=CueType.PRESENTATION, name="deck",
+                   file_path="C:/tmp/deck.pptx",
+                   presentation_action="open"))
+    ws.add_cue(Cue(cue_type=CueType.PRESENTATION, name="slide 3",
+                   presentation_action="goto",
+                   presentation_slide=3))
 
     p = tmp_path / "test.livefire"
     ws.save(p)
@@ -61,6 +67,8 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
         assert orig.video_fade_out == got.video_fade_out
         assert orig.video_start_offset == got.video_start_offset
         assert orig.video_end_offset == got.video_end_offset
+        assert orig.presentation_action == got.presentation_action
+        assert orig.presentation_slide == got.presentation_slide
 
 
 def test_save_writes_current_format_version(tmp_path: Path):

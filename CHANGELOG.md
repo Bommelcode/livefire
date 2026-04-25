@@ -6,6 +6,19 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 ## [Unreleased]
 
 ### Toegevoegd
+- **Presentatie-cue** (PowerPoint via COM). Nieuw cue-type met acties
+  Open / Volgende slide / Vorige slide / Ga naar slide / Sluit. Audio,
+  video, animaties, transities en hyperlinks blijven werken want
+  PowerPoint blijft de speler — liveFire is alleen de cue-trigger.
+  AUTO_FOLLOW op een Open-cue wacht tot de slideshow klaar is, sluit
+  de presentatie automatisch (geen "klik om af te sluiten"-zwarte
+  slide), en minimaliseert de PowerPoint-editor zodat die nooit over
+  een volgende cue blijft staan. Drag-and-drop van .pptx/.ppt/.pptm,
+  Ctrl+9 voor nieuwe cue, eigen knop in de toolbar. Vereist
+  Microsoft PowerPoint en `pywin32` op de showmachine; engine
+  registreert zich in Engine-status, degraded gracefully zonder.
+
+### Toegevoegd
 - **App-icoon** (`livefire/resources/icon.png`) zichtbaar in titlebar,
   Alt-Tab en taskbar. Op Windows wordt een AppUserModelID gezet zodat
   de taskbar liveFire niet onder "Python" groepeert.
