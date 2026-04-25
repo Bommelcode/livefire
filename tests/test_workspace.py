@@ -36,7 +36,8 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
                    video_fade_in=0.5,
                    video_fade_out=1.5,
                    video_start_offset=2.0,
-                   video_end_offset=8.5))
+                   video_end_offset=8.5,
+                   volume_db=-12.0))
 
     p = tmp_path / "test.livefire"
     ws.save(p)

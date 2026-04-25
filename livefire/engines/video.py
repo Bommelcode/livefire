@@ -127,6 +127,7 @@ class VideoEngine(QObject):
         fade_out: float = 0.0,
         start_offset: float = 0.0,
         end_offset: float = 0.0,
+        volume_db: float = 0.0,
     ) -> tuple[bool, str]:
         if not self.available:
             return False, _VLC_ERR or "libVLC niet beschikbaar"
@@ -156,6 +157,14 @@ class VideoEngine(QObject):
         if end_offset > 0:
             media.add_option(f":stop-time={end_offset:.3f}")
         player.set_media(media)
+        # Volume zetten vóór play() heeft op sommige libVLC-builds geen effect;
+        # we doen het ná play() én via set_media. Conversie dB → 0..100% (lineaire
+        # amplitude), boven unity clampen we omdat libVLC 100 als max behandelt.
+        try:
+            linear = 10 ** (volume_db / 20.0)
+            player.audio_set_volume(max(0, min(100, int(round(linear * 100)))))
+        except Exception:
+            pass
         player.play()
 
         # Fade-in via Qt window-opacity animation.
