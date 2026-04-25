@@ -6,6 +6,14 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 ## [Unreleased]
 
 ### Toegevoegd
+- **Trim** (in/uit-punt) op Video-cues. De inspector toont een
+  preview-widget met VLC-thumbnail en sleepbare tijdlijn-markers; daarnaast
+  spinboxen voor numerieke invoer. Beide paden syncen bidirectioneel en
+  scrubben de preview live mee. Trim wordt aan libVLC doorgegeven via
+  `:start-time` / `:stop-time`; de Duur-kolom in de cuelist en de
+  countdown respecteren het getrimde eind. Workspace bewaart
+  `video_start_offset`, `video_end_offset` en een gecachte
+  `video_file_duration`.
 - **OSC-input** voor cue-triggering vanaf Companion / Stream Deck / externe
   consoles. Elke cue krijgt een optioneel `trigger_osc` veld (bv.
   `/livefire/go/intro`); inkomende OSC-messages met dezelfde address vuren
@@ -33,6 +41,13 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 - Tests voor de engine-configuratie-API in `tests/test_audio_engine.py`.
 
 ### Gewijzigd
+- Spinbox-pijltjes (up/down) weer zichtbaar in het dark-theme via
+  expliciet gegenereerde arrow-pixmaps; in Qt-stylesheet-mode tekent Qt
+  geen native glyph meer. `STYLESHEET` is hierdoor een
+  `build_stylesheet()`-functie geworden (moet ná QApplication() draaien).
+- Inspector-edits triggeren een targeted refresh van de cuelist-rij in
+  plaats van een full clear/rebuild, zodat keyboard-focus op spinboxen
+  niet wegspringt tijdens typen.
 - Inspector-kleurveld is nu een dropdown met preset cue-kleuren (QLab-stijl)
   inclusief kleur-swatches. Niet-preset hex-waarden uit oudere workspaces
   blijven bewaard als "Aangepast".
