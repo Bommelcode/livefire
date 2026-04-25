@@ -5,6 +5,12 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+### Verholpen
+- Geen UI-flits meer tussen twee opeenvolgende video-cues bij
+  AUTO_FOLLOW. De oude `VideoWindow` wordt eerst gepauzeerd (laatste
+  frame blijft staan) en pas 300 ms later geclosed/released, zodat de
+  volgende videowindow er bovenop kan komen voordat de oude verdwijnt.
+
 ### Toegevoegd
 - **Trim** (in/uit-punt) op Video-cues. De inspector toont een
   preview-widget met VLC-thumbnail en sleepbare tijdlijn-markers; daarnaast

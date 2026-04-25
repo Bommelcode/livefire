@@ -262,16 +262,33 @@ class VideoEngine(QObject):
         entry = self._playing.pop(cue_id, None)
         if entry is None:
             return
-        try:
-            entry["player"].stop()
-            entry["player"].release()
-        except Exception:
-            pass
-        try:
-            entry["window"].close()
-            entry["window"].deleteLater()
-        except Exception:
-            pass
+        player = entry.get("player")
+        window = entry.get("window")
+        # Pauzeer eerst zodat het laatste frame zichtbaar blijft; ruim daarna
+        # met een korte delay op. Bij AUTO_FOLLOW van video → video heeft de
+        # volgende videowindow zo de tijd om fullscreen op te komen vóór deze
+        # weggaat — anders zie je tussendoor heel even de desktop/UI flitsen.
+        if player is not None:
+            try:
+                player.set_pause(True)
+            except Exception:
+                pass
+
+        def _cleanup() -> None:
+            try:
+                if player is not None:
+                    player.stop()
+                    player.release()
+            except Exception:
+                pass
+            try:
+                if window is not None:
+                    window.close()
+                    window.deleteLater()
+            except Exception:
+                pass
+
+        QTimer.singleShot(300, _cleanup)
 
     def _on_end_reached(self, cue_id: str) -> None:
         """Draait op UI-thread via QTimer.singleShot. Signaleer aan de
