@@ -44,6 +44,18 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
     ws.add_cue(Cue(cue_type=CueType.PRESENTATION, name="slide 3",
                    presentation_action="goto",
                    presentation_slide=3))
+    # v0.4.1: Image en Network cue-types
+    ws.add_cue(Cue(cue_type=CueType.IMAGE, name="slide 1",
+                   file_path="C:/tmp/slide_001.png",
+                   image_output_screen=2,
+                   image_fade_in=0.5,
+                   image_fade_out=0.3,
+                   duration=5.0))
+    ws.add_cue(Cue(cue_type=CueType.NETWORK, name="companion trigger",
+                   network_address="/companion/page/1/button/1",
+                   network_args='42, 0.5, "hello world"',
+                   network_host="192.168.1.10",
+                   network_port=12321))
 
     p = tmp_path / "test.livefire"
     ws.save(p)
@@ -69,6 +81,14 @@ def test_roundtrip_preserves_all_cue_types(tmp_path: Path):
         assert orig.video_end_offset == got.video_end_offset
         assert orig.presentation_action == got.presentation_action
         assert orig.presentation_slide == got.presentation_slide
+        # v0.4.1
+        assert orig.image_output_screen == got.image_output_screen
+        assert orig.image_fade_in == got.image_fade_in
+        assert orig.image_fade_out == got.image_fade_out
+        assert orig.network_address == got.network_address
+        assert orig.network_args == got.network_args
+        assert orig.network_host == got.network_host
+        assert orig.network_port == got.network_port
 
 
 def test_save_writes_current_format_version(tmp_path: Path):
@@ -133,3 +153,65 @@ def test_unknown_format_version_raises(tmp_path: Path):
     }), encoding="utf-8")
     with pytest.raises(ValueError):
         Workspace.load(p)
+
+
+def test_v040_workspace_loads_in_v041_with_image_defaults(tmp_path: Path):
+    """Een workspace die in v0.4.0 is opgeslagen — zonder image_*-velden —
+    moet zonder fout laden in v0.4.1; de nieuwe velden krijgen
+    dataclass-defaults."""
+    p = tmp_path / "v040.livefire"
+    p.write_text(json.dumps({
+        "format_version": WORKSPACE_FORMAT_VERSION,
+        "cues": [
+            {
+                "cue_type": "Audio",
+                "name": "intro",
+                "file_path": "/tmp/intro.wav",
+                # geen image_*-velden, geen network_*-velden
+            },
+        ],
+    }), encoding="utf-8")
+    ws = Workspace.load(p)
+    assert len(ws.cues) == 1
+    c = ws.cues[0]
+    assert c.cue_type == "Audio"
+    # Nieuwe v0.4.1-velden krijgen defaults zonder fout
+    assert c.image_output_screen == 0
+    assert c.image_fade_in == 0.0
+    assert c.image_fade_out == 0.0
+    assert c.network_address == ""
+    assert c.network_host == "127.0.0.1"
+    assert c.network_port == 53000
+    assert c.network_args == ""
+
+
+def test_v041_image_and_network_cues_roundtrip(tmp_path: Path):
+    """De nieuwe Image- en Network-cue types overleven een save/load cycle."""
+    ws = Workspace()
+    ws.add_cue(Cue(
+        cue_type=CueType.IMAGE, name="slide-1",
+        file_path="/tmp/slide_001.png",
+        image_output_screen=2, image_fade_in=0.5, image_fade_out=0.25,
+        duration=8.0,
+    ))
+    ws.add_cue(Cue(
+        cue_type=CueType.NETWORK, name="trigger-companion",
+        network_address="/companion/page/1/button/1",
+        network_args='1, 0.5, "hello world"',
+        network_host="192.168.1.50",
+        network_port=12321,
+    ))
+
+    p = tmp_path / "v041.livefire"
+    ws.save(p)
+    ws2 = Workspace.load(p)
+    assert len(ws2.cues) == 2
+    img, net = ws2.cues
+    assert img.cue_type == CueType.IMAGE
+    assert img.image_fade_in == 0.5
+    assert img.image_output_screen == 2
+    assert net.cue_type == CueType.NETWORK
+    assert net.network_address == "/companion/page/1/button/1"
+    assert net.network_args == '1, 0.5, "hello world"'
+    assert net.network_host == "192.168.1.50"
+    assert net.network_port == 12321

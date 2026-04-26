@@ -22,6 +22,12 @@ python-vlc>=3.0
 # Microsoft Office; engine degraded gracefully op machines zonder Office.
 pywin32>=305 ; sys_platform == "win32"
 
+# Licensing — Ed25519 signing/verification voor dag- en abonnement-
+# licenties. `cryptography` heeft betrouwbare Windows-wheels en is een
+# de-facto standaard. We gebruiken alleen de Ed25519-API; de rest is
+# ongerelevant.
+cryptography>=42
+
 # Optioneel nog uit te werken in komende versies:
 # pyartnet>=0.8      # DMX Art-Net (v0.5)
 # sacn>=1.9          # sACN E1.31 (v0.5)

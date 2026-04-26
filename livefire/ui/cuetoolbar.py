@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ..cues import CueType
+from ..i18n import t
 
 
 # QLab gebruikt per cue-type een eigen kleur-accent. We doen hetzelfde zodat
@@ -18,7 +19,9 @@ from ..cues import CueType
 _CUE_TYPE_ACCENTS = {
     CueType.AUDIO:        "#2980b9",  # blauw
     CueType.VIDEO:        "#16a085",  # teal
+    CueType.IMAGE:        "#0e7490",  # cyaan-teal (image = "stille video")
     CueType.PRESENTATION: "#b03a2e",  # PowerPoint-rood
+    CueType.NETWORK:      "#5b6abf",  # indigo (OSC = network/control)
     CueType.FADE:         "#c9a227",  # geel
     CueType.WAIT:         "#606060",  # grijs
     CueType.STOP:         "#c0392b",  # rood
@@ -28,7 +31,8 @@ _CUE_TYPE_ACCENTS = {
 }
 
 _CUE_TYPE_ORDER = [
-    CueType.AUDIO, CueType.VIDEO, CueType.PRESENTATION,
+    CueType.AUDIO, CueType.VIDEO, CueType.IMAGE, CueType.PRESENTATION,
+    CueType.NETWORK,
     CueType.FADE, CueType.WAIT, CueType.STOP,
     CueType.START, CueType.GROUP, CueType.MEMO,
 ]
@@ -36,7 +40,9 @@ _CUE_TYPE_ORDER = [
 _CUE_TYPE_TIPS = {
     CueType.AUDIO:        "Nieuwe Audio-cue (Ctrl+1)",
     CueType.VIDEO:        "Nieuwe Video-cue (Ctrl+8)",
+    CueType.IMAGE:        "Nieuwe Afbeelding-cue (Ctrl+0)",
     CueType.PRESENTATION: "Nieuwe Presentatie-cue (Ctrl+9)",
+    CueType.NETWORK:      "Nieuwe Network-cue (OSC-out)",
     CueType.FADE:         "Nieuwe Fade-cue (Ctrl+2)",
     CueType.WAIT:         "Nieuwe Wait-cue (Ctrl+3)",
     CueType.STOP:         "Nieuwe Stop-cue (Ctrl+4)",
@@ -69,13 +75,15 @@ class CueToolbar(QWidget):
         lay.setSpacing(4)
 
         for ct in _CUE_TYPE_ORDER:
-            btn = QPushButton(ct)
+            btn = QPushButton(t(f"cuetype.{ct}"))
             btn.setIcon(_swatch_icon(_CUE_TYPE_ACCENTS[ct]))
             btn.setIconSize(QSize(10, 10))
             btn.setToolTip(_CUE_TYPE_TIPS[ct])
             btn.setFlat(False)
             btn.setMinimumHeight(26)
-            btn.clicked.connect(lambda _checked, t=ct: self.new_cue.emit(t))
+            # Capture ct via default-arg om late-binding in de lambda te
+            # voorkomen. Niet 't' noemen — dat shadowt de i18n-import.
+            btn.clicked.connect(lambda _checked, ctype=ct: self.new_cue.emit(ctype))
             lay.addWidget(btn)
 
         lay.addWidget(self._separator())

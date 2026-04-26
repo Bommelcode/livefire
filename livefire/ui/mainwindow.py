@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 
 from .. import APP_NAME, APP_VERSION, WORKSPACE_EXT
 from ..cues import Cue, CueType
+from ..i18n import t
 from ..workspace import Workspace
 from ..playback import PlaybackController
 from ..engines import registry
@@ -21,7 +22,9 @@ from ..engines.audio import (
     register_status as register_audio_status,
     find_device_index_by_name,
 )
+from ..engines.image import register_status as register_image_status
 from ..engines.osc import register_status as register_osc_status
+from ..engines.osc_out import register_status as register_osc_out_status
 from ..engines.powerpoint import register_status as register_powerpoint_status
 from ..engines.video import register_status as register_video_status
 
@@ -29,8 +32,17 @@ from .cuelist import CueListWidget
 from .cuetoolbar import CueToolbar
 from .inspector import InspectorWidget
 from .transport import TransportWidget
-from .dialogs import show_about, EngineStatusDialog, PreferencesDialog
+from .dialogs import (
+    show_about, EngineStatusDialog, LicenseDialog, PreferencesDialog,
+    PptImportDialog, MODE_SLIDES, MODE_SINGLE,
+)
 from .dialogs.preferences import DEFAULT_SAMPLE_RATE, DEFAULT_OSC_PORT
+from ..engines.powerpoint import (
+    count_slides as ppt_count_slides,
+    export_slides_to_png as ppt_export_slides,
+    is_com_available as ppt_com_available,
+)
+from .. import licensing as licensing_mod
 
 
 class MainWindow(QMainWindow):
@@ -38,6 +50,12 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.resize(1400, 860)
+
+        # Licensing — laad de actieve licentie van disk en cache 'm in
+        # de licensing-module zodat has_feature() overal werkt zonder
+        # disk-I/O. De UI mag deze state ook lezen voor een titlebar-
+        # badge of statusbar-indicator.
+        licensing_mod.init()
 
         # Model
         self.ws = Workspace()
@@ -50,6 +68,8 @@ class MainWindow(QMainWindow):
         self.controller = PlaybackController(self.ws, parent=self, audio=audio)
         self.controller.cue_state_changed.connect(self._on_cue_state_changed)
         self.controller.running_changed.connect(self._on_running_changed)
+        self.controller.network_send_failed.connect(self._on_network_send_failed)
+        self.controller.cue_blocked_by_license.connect(self._on_cue_blocked_by_license)
 
         # OSC-input opstarten vanuit QSettings
         self._start_osc_from_settings()
@@ -57,7 +77,9 @@ class MainWindow(QMainWindow):
         # Engine status registreren
         register_audio_status(self.controller.audio)
         register_osc_status(self.controller.osc)
+        register_osc_out_status(self.controller.osc_out)
         register_video_status(self.controller.video)
+        register_image_status(self.controller.image)
         register_powerpoint_status(self.controller.powerpoint)
         # VLC-audio-device uit QSettings toepassen
         self._apply_video_audio_device_from_settings()
@@ -70,6 +92,9 @@ class MainWindow(QMainWindow):
 
         # Inspector krijgt een handle naar de OSC-engine voor de Learn-dialog
         self.inspector.osc_engine = self.controller.osc
+        # En naar de OSC-output engine voor de "Test verzenden"-knop op
+        # Network-cues.
+        self.inspector.osc_out_engine = self.controller.osc_out
 
     # ---- build ------------------------------------------------------------
 
@@ -156,8 +181,12 @@ class MainWindow(QMainWindow):
                          tip="Speelt een audio-bestand af met volume, loops en fades")
         self._add_action(m_cue, "Nieuwe Video-cue", lambda: self.action_new_cue(CueType.VIDEO), QKeySequence("Ctrl+8"),
                          tip="Speelt een video-bestand fullscreen af op het gekozen scherm (libVLC)")
+        self._add_action(m_cue, "Nieuwe Afbeelding-cue", lambda: self.action_new_cue(CueType.IMAGE), QKeySequence("Ctrl+0"),
+                         tip="Toont een still-image fullscreen op het gekozen scherm (Qt)")
         self._add_action(m_cue, "Nieuwe Presentatie-cue", lambda: self.action_new_cue(CueType.PRESENTATION), QKeySequence("Ctrl+9"),
                          tip="Stuurt een PowerPoint-presentatie aan via COM (Open / Volgende slide / Vorige / Goto / Sluit)")
+        self._add_action(m_cue, "Nieuwe Network-cue", lambda: self.action_new_cue(CueType.NETWORK),
+                         tip="Stuurt een OSC-message naar een externe ontvanger (Companion, QLab, SQ5, …)")
         self._add_action(m_cue, "Nieuwe Fade-cue", lambda: self.action_new_cue(CueType.FADE), QKeySequence("Ctrl+2"),
                          tip="Verandert het volume van een andere (lopende) audio-cue over tijd")
         self._add_action(m_cue, "Nieuwe Wait-cue", lambda: self.action_new_cue(CueType.WAIT), QKeySequence("Ctrl+3"),
@@ -189,6 +218,8 @@ class MainWindow(QMainWindow):
         m_help.setToolTipsVisible(True)
         self._add_action(m_help, "Engine-status…", self.action_engine_status,
                          tip="Toont welke engines (Audio, OSC) beschikbaar zijn en hun status")
+        self._add_action(m_help, "Licentie…", self.action_license,
+                         tip="Toont de actieve licentie en laat je een nieuwe importeren")
         self._add_action(m_help, f"Over {APP_NAME}…", self.action_about,
                          tip=f"Over {APP_NAME} — versie en auteur")
 
@@ -332,6 +363,14 @@ class MainWindow(QMainWindow):
         dlg = EngineStatusDialog(self)
         dlg.exec()
 
+    def action_license(self) -> None:
+        dlg = LicenseDialog(self)
+        dlg.exec()
+        # De gebruiker kan in de dialog een licentie hebben geïmporteerd
+        # of verwijderd — refresh de titel zodat een eventuele Pro/FREE-
+        # badge meteen klopt.
+        self._sync_title()
+
     def action_preferences(self) -> None:
         dlg = PreferencesDialog(
             self.controller.audio, self.controller.osc,
@@ -389,6 +428,29 @@ class MainWindow(QMainWindow):
     def _on_cue_state_changed(self, cue_id: str) -> None:
         self.cue_list.update_cue(cue_id)
 
+    def _on_network_send_failed(self, cue_id: str, err: str) -> None:
+        """Toon een transiënte waarschuwing in de statusbar als een
+        Network-cue's OSC-send mislukte. Anders zou de operator pas
+        merken dat de trigger niet aankwam doordat de receiver niet
+        reageert."""
+        cue = self.ws.find(cue_id)
+        name = cue.name if cue else cue_id[:8]
+        msg = f"⚠ Network-cue '{name}' faalde: {err}"
+        # showMessage met timeout 4000ms — verschijnt links in de statusbar.
+        self.statusBar().showMessage(msg, 4000)
+
+    def _on_cue_blocked_by_license(self, cue_id: str, cue_type: str) -> None:
+        """Een cue is geskipt omdat het cue-type een Pro-licentie vereist.
+        Flash een melding in de statusbar — niet een modal, want de show
+        moet kunnen doorlopen."""
+        cue = self.ws.find(cue_id)
+        name = cue.name if cue else cue_id[:8]
+        msg = (
+            f"🔒 '{name}' ({cue_type}) vereist een Pro-licentie — "
+            f"open Help → Licentie…"
+        )
+        self.statusBar().showMessage(msg, 6000)
+
     def _on_running_changed(self) -> None:
         self.transport.set_active_count(len(self.controller.audio.active_cue_ids()))
 
@@ -400,10 +462,22 @@ class MainWindow(QMainWindow):
     _PPT_EXTS = {".pptx", ".ppt", ".pptm"}
 
     def _on_files_dropped(self, paths: list[str]) -> None:
-        from ..cues import PresentationAction
-        added = 0
+        # Eerst alle PPTs uit de drop scheiden — voor PPTs vragen we per
+        # bestand hoe ze toegevoegd moeten worden, en met een "toepassen
+        # op alle"-checkbox als er meerdere zijn.
+        ppt_paths: list[Path] = []
+        other_paths: list[Path] = []
         for p in paths:
             path = Path(p)
+            if path.suffix.lower() in self._PPT_EXTS:
+                ppt_paths.append(path)
+            else:
+                other_paths.append(path)
+
+        added = 0
+
+        # ---- niet-PPT-bestanden: ongewijzigd gedrag --------------------
+        for path in other_paths:
             ext = path.suffix.lower()
             n = len(self.ws.cues) + 1
             if ext in self._AUDIO_EXTS:
@@ -412,24 +486,122 @@ class MainWindow(QMainWindow):
             elif ext in self._VIDEO_EXTS:
                 cue = Cue(cue_type=CueType.VIDEO, cue_number=str(n),
                           name=path.stem, file_path=str(path))
-            elif ext in self._PPT_EXTS:
-                cue = Cue(cue_type=CueType.PRESENTATION, cue_number=str(n),
-                          name=path.stem, file_path=str(path),
-                          presentation_action=PresentationAction.OPEN)
             elif ext in self._IMAGE_EXTS:
-                cue = Cue(
-                    cue_type=CueType.MEMO, cue_number=str(n), name=path.stem,
-                    notes=(f"[Afbeelding-placeholder] {path}\n\n"
-                           "Image-cue-type is nog niet geïmplementeerd — "
-                           "bewaar als Memo."),
-                )
+                # v0.4.1: image-drop maakt nu een echte Image-cue (was Memo
+                # placeholder). De Image-engine kan deze direct fullscreen
+                # tonen.
+                cue = Cue(cue_type=CueType.IMAGE, cue_number=str(n),
+                          name=path.stem, file_path=str(path))
             else:
                 continue
             self.ws.add_cue(cue)
             added += 1
+
+        # ---- PPT-bestanden: per bestand een keuze vragen --------------
+        forced_mode: str | None = None
+        for path in ppt_paths:
+            mode = forced_mode
+
+            if mode is None:
+                # Probeer eerst zelf het aantal slides te tellen (alleen
+                # voor .pptx/.pptm — voor .ppt komt None terug).
+                detected = ppt_count_slides(str(path))
+                show_apply = (len(ppt_paths) > 1 and forced_mode is None)
+                dlg = PptImportDialog(
+                    str(path), detected,
+                    com_available=ppt_com_available(),
+                    show_apply_to_all=show_apply, parent=self,
+                )
+                if dlg.exec() != dlg.DialogCode.Accepted:
+                    continue
+                mode = dlg.chosen_mode()
+                if dlg.apply_to_all():
+                    forced_mode = mode
+
+            added += self._add_ppt_cues(path, mode)
+
         if added:
             self.cue_list.refresh()
             self._sync_title()
+
+    def _add_ppt_cues(self, path: Path, mode: str) -> int:
+        """Voeg cues voor één PPT-bestand toe op basis van keuze. Geeft
+        het aantal toegevoegde cues terug."""
+        from ..cues import PresentationAction
+        n = len(self.ws.cues) + 1
+
+        if mode == MODE_SINGLE:
+            cue = Cue(cue_type=CueType.PRESENTATION, cue_number=str(n),
+                      name=path.stem, file_path=str(path),
+                      presentation_action=PresentationAction.OPEN)
+            self.ws.add_cue(cue)
+            return 1
+
+        # MODE_SLIDES — exporteer iedere slide naar PNG via PowerPoint COM
+        # en maak per slide een Image-cue. Assets gaan in een folder naast
+        # het PPT-bestand: ``<pptx_parent>/<pptx_stem>_slides/``. Op die
+        # manier zijn de PNGs gekoppeld aan het bron-bestand en niet aan
+        # een specifieke workspace.
+        out_dir = path.parent / f"{path.stem}_slides"
+        png_paths = self._export_pptx_to_pngs_with_progress(path, out_dir)
+        if png_paths is None:
+            return 0  # gebruiker annuleerde of export faalde
+
+        added = 0
+        for i, png in enumerate(png_paths, start=1):
+            cue = Cue(
+                cue_type=CueType.IMAGE,
+                cue_number=str(n + added),
+                name=f"{path.stem} — slide {i}",
+                file_path=png,
+            )
+            self.ws.add_cue(cue)
+            added += 1
+        return added
+
+    def _export_pptx_to_pngs_with_progress(
+        self, src: Path, out_dir: Path,
+    ) -> list[str] | None:
+        """Run de slide-export met een QProgressDialog. Returns lijst met
+        PNG-paden bij succes, of None bij annuleren / fout."""
+        from PyQt6.QtWidgets import QProgressDialog, QMessageBox
+
+        prog = QProgressDialog(
+            t("pptimport.exporting_label").format(i=0, n=0),
+            t("btn.cancel"),
+            0, 0, self,
+        )
+        prog.setWindowTitle(t("pptimport.exporting_title"))
+        prog.setWindowModality(Qt.WindowModality.WindowModal)
+        prog.setMinimumDuration(0)
+        prog.setAutoClose(False)
+        prog.show()
+        # Force eerste paint zodat de dialog ook bij snelle exports zichtbaar is.
+        from PyQt6.QtWidgets import QApplication
+        QApplication.processEvents()
+
+        def _cb(i: int, total: int) -> bool:
+            if prog.maximum() != total:
+                prog.setMaximum(total)
+            prog.setValue(i)
+            prog.setLabelText(t("pptimport.exporting_label").format(i=i, n=total))
+            QApplication.processEvents()
+            return prog.wasCanceled()
+
+        ok, paths, err = ppt_export_slides(
+            str(src), str(out_dir), progress_callback=_cb,
+        )
+        prog.close()
+
+        if not ok:
+            if err == "Geannuleerd":
+                return None
+            QMessageBox.warning(
+                self, t("pptimport.export_failed"),
+                f"{src.name}\n\n{err}",
+            )
+            return None
+        return paths
 
     def _on_playhead_changed(self, index: int) -> None:
         self.controller.set_playhead(index)

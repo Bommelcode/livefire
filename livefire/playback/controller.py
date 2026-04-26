@@ -13,8 +13,13 @@ from dataclasses import dataclass, field
 from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from ..cues import Cue, CueType, ContinueMode, PresentationAction
-from ..engines import AudioEngine, OscInputEngine, PowerPointEngine, VideoEngine
+from ..engines import (
+    AudioEngine, ImageEngine, OscInputEngine, OscOutputEngine,
+    PowerPointEngine, VideoEngine,
+)
+from ..engines.osc_out import parse_args as parse_osc_args
 from ..workspace import Workspace
+from .. import licensing
 
 
 TICK_MS = 20  # 50 Hz tick — ruim voldoende voor cue-timing, voor audio doet
@@ -37,6 +42,15 @@ class PlaybackController(QObject):
 
     cue_state_changed = pyqtSignal(str)   # cue.id
     running_changed = pyqtSignal()
+    # Wanneer een Network-cue's OSC-send faalt (lege/ongeldige address,
+    # python-osc niet beschikbaar, enz.), emit (cue_id, error_message).
+    # De UI kan zich hieraan abonneren om de operator te waarschuwen.
+    network_send_failed = pyqtSignal(str, str)
+    # Wanneer een cue NIET wordt afgespeeld omdat de licentie het cue-type
+    # niet ondersteunt (Pro-feature in FREE-tier). De UI flash't dit in
+    # de statusbar en de show gaat door naar post_wait.
+    cue_blocked_by_license = pyqtSignal(str, str)  # cue_id, cue_type
+    network_send_failed = pyqtSignal(str, str)  # cue_id, error_message — voor UI-statusbar
 
     def __init__(
         self,
@@ -46,6 +60,8 @@ class PlaybackController(QObject):
         osc: OscInputEngine | None = None,
         video: VideoEngine | None = None,
         powerpoint: PowerPointEngine | None = None,
+        image: ImageEngine | None = None,
+        osc_out: OscOutputEngine | None = None,
     ):
         super().__init__(parent)
         self.workspace = workspace
@@ -57,6 +73,8 @@ class PlaybackController(QObject):
 
         self.video = video if video is not None else VideoEngine(self)
         self.powerpoint = powerpoint if powerpoint is not None else PowerPointEngine(self)
+        self.image = image if image is not None else ImageEngine(self)
+        self.osc_out = osc_out if osc_out is not None else OscOutputEngine(self)
 
         self._running: dict[str, _Running] = {}
         self._playhead_index: int = 0
@@ -78,7 +96,9 @@ class PlaybackController(QObject):
         self.stop_all()
         self.audio.stop()
         self.osc.stop()
+        self.osc_out.shutdown()
         self.video.shutdown()
+        self.image.shutdown()
         self.powerpoint.shutdown()
 
     # ---- transport ---------------------------------------------------------
@@ -159,12 +179,19 @@ class PlaybackController(QObject):
             self._stop_running(cid, finished=False)
         self.audio.stop_all()
         self.video.stop_all()
+        self.image.stop_all()
+        # Sluit ook een lopende PowerPoint-slideshow zodat Esc / Stop All
+        # alle visuele output dichtklapt — anders blijft het PowerPoint-
+        # window over de cuelist hangen tot een Close-cue. Veilig om te
+        # roepen ook als er geen presentatie open is.
+        self.powerpoint.close()
 
     def stop_cue(self, cue_id: str) -> None:
         if cue_id in self._running:
             self._stop_running(cue_id, finished=False)
         self.audio.stop_cue(cue_id)
         self.video.stop_cue(cue_id)
+        self.image.stop_cue(cue_id)
 
     # ---- cue-specifieke start-logica --------------------------------------
 
@@ -182,6 +209,19 @@ class PlaybackController(QObject):
         cue = r.cue
         r.phase = "action"
         r.phase_started_at = time.monotonic()
+
+        # Licensing-gate: vergrendelde cue-types vuren niet bij GO. We
+        # houden de cue-lifecycle wel intact (post_wait + AUTO_FOLLOW)
+        # zodat de show-flow niet kapotgaat — alleen de actie wordt
+        # overgeslagen en een signal informeert de UI.
+        if not licensing.has_feature(cue.cue_type):
+            self.cue_blocked_by_license.emit(cue.id, cue.cue_type)
+            r.action_duration = 0.0
+            # AUTO_CONTINUE moet ook nog werken zodat een blokkade niet
+            # de hele chain breekt.
+            if cue.continue_mode == ContinueMode.AUTO_CONTINUE:
+                self._advance_and_go()
+            return
 
         t = cue.cue_type
         if t == CueType.AUDIO:
@@ -229,6 +269,40 @@ class PlaybackController(QObject):
                 self.powerpoint.goto_slide(cue.presentation_slide)
             elif action == PresentationAction.CLOSE:
                 self.powerpoint.close()
+            r.action_duration = 0.0
+
+        elif t == CueType.IMAGE:
+            ok, _err = self.image.play(
+                cue_id=cue.id,
+                file_path=cue.file_path,
+                screen_index=cue.image_output_screen,
+                fade_in=cue.image_fade_in,
+                fade_out=cue.image_fade_out,
+                duration=cue.duration,
+            )
+            if not ok:
+                r.action_duration = 0.0
+            else:
+                # duration > 0 → engine sluit zichzelf af na duration sec.
+                # duration == 0 → image blijft staan; cue is "klaar" zodra
+                # de fade-in voltooid is, zodat AUTO_FOLLOW kan chainen.
+                if cue.duration > 0:
+                    r.action_duration = cue.duration
+                else:
+                    r.action_duration = max(cue.image_fade_in, 0.0)
+
+        elif t == CueType.NETWORK:
+            args = parse_osc_args(cue.network_args)
+            ok, err = self.osc_out.send(
+                cue.network_host, cue.network_port,
+                cue.network_address, args,
+            )
+            if not ok:
+                # Surface naar de UI zodat de statusbar het kan tonen —
+                # anders weet de operator niet dat de OSC-trigger niet
+                # is aangekomen.
+                self.network_send_failed.emit(cue.id, err)
+            # Network-cues zijn instant: het verzenden gebeurt synchroon.
             r.action_duration = 0.0
 
         elif t == CueType.WAIT:
@@ -384,6 +458,29 @@ class PlaybackController(QObject):
                         self.powerpoint.close()
                         if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
                             to_advance.append(cid)
+                elif r.cue.cue_type == CueType.IMAGE:
+                    # duration > 0: net als video — wacht op de duration en
+                    # initieer dan de fade-out via de engine.
+                    # duration == 0: cue is klaar zodra de fade-in voltooid is
+                    # (action_duration == fade_in seconden); de image-window
+                    # blijft staan tot vervangen door een volgende image-cue
+                    # of een Stop-cue.
+                    if r.cue.duration > 0:
+                        if elapsed_phase >= r.action_duration and not r.stop_triggered:
+                            self.image.stop_cue(r.cue.id, fade_out=r.cue.image_fade_out)
+                            r.stop_triggered = True
+                            if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                                to_advance.append(cid)
+                            if r.cue.image_fade_out <= 0:
+                                finished = True
+                        elif r.stop_triggered:
+                            if not self.image.is_playing(r.cue.id):
+                                finished = True
+                    else:
+                        if elapsed_phase >= r.action_duration:
+                            finished = True
+                            if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                                to_advance.append(cid)
                 else:
                     if elapsed_phase >= r.action_duration:
                         finished = True

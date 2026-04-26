@@ -14,7 +14,9 @@ class CueType:
 
     AUDIO = "Audio"
     VIDEO = "Video"
+    IMAGE = "Image"
     PRESENTATION = "Presentation"
+    NETWORK = "Network"
     GROUP = "Group"
     WAIT = "Wait"
     STOP = "Stop"
@@ -26,7 +28,7 @@ class CueType:
     # MIDI  = "MIDI"    -> v0.4.x
     # DMX   = "DMX"     -> v0.5.0
 
-    ALL = [AUDIO, VIDEO, PRESENTATION, GROUP, WAIT, STOP, FADE, START, MEMO]
+    ALL = [AUDIO, VIDEO, IMAGE, PRESENTATION, NETWORK, GROUP, WAIT, STOP, FADE, START, MEMO]
 
 
 class PresentationAction:
@@ -106,9 +108,25 @@ class Cue:
     video_file_duration: float = 0.0 # cache van file-duur; auto-gevuld door preview
     video_last_frame_store: bool = False  # True = behoud laatste frame na einde, False = zwart
 
+    # Image (v0.4.1 — voor ingebedde slides en losse afbeeldingen)
+    image_output_screen: int = 0     # zelfde indexering als video
+    image_fade_in: float = 0.0       # s, 0 = hard in
+    image_fade_out: float = 0.0      # s, 0 = hard uit
+
     # PowerPoint-presentatie
     presentation_action: str = PresentationAction.OPEN
     presentation_slide: int = 1     # alleen voor GOTO
+
+    # Network (OSC-out, v0.4.1)
+    # Adres: bv. "/companion/page/1/button/1" of "/livefire/show/start"
+    # Args: vrije tekst, comma-separated. Token-parsing: int → float → string,
+    # met "..."-quoting voor strings met spaties of komma's.
+    # Host: hostname of IP, default 127.0.0.1.
+    # Port: UDP-poort van de ontvanger (Companion default = 12321, QLab = 53000).
+    network_address: str = ""
+    network_args: str = ""
+    network_host: str = "127.0.0.1"
+    network_port: int = 53000
 
     # Fade-target
     target_cue_id: str = ""    # voor Stop, Fade, Start

@@ -17,11 +17,200 @@ from __future__ import annotations
 import ctypes
 import sys
 import time
+import zipfile
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
 from .registry import EngineStatus, register
+
+
+# ---- pure-Python helpers (geen PowerPoint of pywin32 nodig) ---------------
+
+def is_com_available() -> bool:
+    """True wanneer pywin32 + PowerPoint COM bruikbaar zijn op deze
+    machine. Gebruikt door de PPT-import-dialog om de slides-optie
+    al-dan-niet aan te bieden."""
+    return _COM_OK
+
+
+def count_slides(file_path: str) -> int | None:
+    """Tel het aantal slides in een .pptx/.pptm zonder PowerPoint te starten.
+
+    .pptx en .pptm zijn ZIP-archieven volgens de OpenXML-spec; iedere slide
+    heeft een eigen ``ppt/slides/slideN.xml``. Tellen gaat dus puur via
+    zipfile + filtering. Voor het legacy binary ``.ppt``-formaat geven we
+    ``None`` terug — dat zou pywin32 + COM vereisen, en daar willen we niet
+    op vertrouwen tijdens een drag-drop (PowerPoint zou starten alleen om te
+    tellen).
+
+    Edge: het aantal fysieke slides kan in zeldzame gevallen afwijken van
+    het aantal slides in slideshow-volgorde (verborgen slides, custom shows).
+    Voor de import-flow gebruiken we het fysieke aantal — dat is wat
+    ``Slide.GotoSlide(N)`` indexeert.
+    """
+    ext = Path(file_path).suffix.lower()
+    if ext not in {".pptx", ".pptm"}:
+        return None
+    try:
+        with zipfile.ZipFile(file_path, "r") as zf:
+            return sum(
+                1
+                for name in zf.namelist()
+                if name.startswith("ppt/slides/slide")
+                and name.endswith(".xml")
+                and "/_rels/" not in name
+            )
+    except (zipfile.BadZipFile, OSError, KeyError):
+        return None
+
+
+def export_slides_to_png(
+    file_path: str,
+    output_dir: str,
+    max_dim: int = 1920,
+    progress_callback=None,
+) -> tuple[bool, list[str], str]:
+    """Exporteer iedere slide naar een PNG via PowerPoint COM.
+
+    Vereist Windows + Microsoft PowerPoint geïnstalleerd. Op andere
+    platforms of zonder pywin32 retourneert deze functie ``(False, [],
+    "...")``.
+
+    Resolutie wordt aspect-correct bepaald op basis van
+    ``Presentation.PageSetup.SlideWidth/SlideHeight`` (PowerPoint-points).
+    De langste zijde wordt geschaald naar ``max_dim`` (default 1920); de
+    andere zijde volgt evenredig. Zo blijven 4:3 en 16:9 presentaties
+    onvervormd.
+
+    Bestandsnamen volgen ``slide_001.png``, ``slide_002.png``, ... — drie
+    cijfers padding zodat alfabetische sortering met natuurlijke volgorde
+    overeenkomt tot 999 slides.
+
+    `progress_callback(current, total)` (optioneel) wordt aangeroepen na
+    iedere geslaagde slide-export, zodat een UI een progressbar kan
+    bijwerken. Geeft het callback ``True`` terug, dan wordt de export
+    afgebroken (cancel-knop).
+
+    Returnt ``(ok, list_of_paths, error_message)``.
+    """
+    if not _COM_OK:
+        return False, [], _COM_ERR or "PowerPoint COM niet beschikbaar"
+
+    src = Path(file_path)
+    if not src.is_file():
+        return False, [], f"Bestand niet gevonden: {src}"
+
+    out_dir = Path(output_dir)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        return False, [], f"Kon output-folder niet aanmaken ({out_dir}): {e}"
+
+    try:
+        pythoncom.CoInitialize()
+    except Exception:
+        pass
+
+    app = None
+    presentation = None
+    we_started_app = False
+    try:
+        try:
+            app = win32com.client.GetActiveObject("PowerPoint.Application")
+        except Exception:
+            app = win32com.client.Dispatch("PowerPoint.Application")
+            we_started_app = True
+        # PowerPoint vereist Visible=True voor de meeste COM-operaties.
+        # Een onzichtbare instance accepteert geen Presentations.Open.
+        try:
+            app.Visible = True
+        except Exception:
+            pass
+
+        try:
+            presentation = app.Presentations.Open(
+                str(src.resolve()),
+                ReadOnly=True,
+                Untitled=False,
+                WithWindow=False,
+            )
+        except Exception:
+            # Sommige PowerPoint-versies/-paths weigeren WithWindow=False;
+            # val terug op WithWindow=True (we zien 'm dan kort flitsen).
+            try:
+                presentation = app.Presentations.Open(str(src.resolve()))
+            except Exception as e:
+                return False, [], f"Kon presentatie niet openen: {e}"
+
+        # Minimaliseer eventueel het editor-window zodat de gebruiker geen
+        # PowerPoint-UI ziet flitsen tijdens export.
+        try:
+            for i in range(1, presentation.Windows.Count + 1):
+                presentation.Windows(i).WindowState = _PP_WINDOW_MINIMIZED
+        except Exception:
+            pass
+
+        slide_count = int(presentation.Slides.Count)
+        if slide_count <= 0:
+            return False, [], "Presentatie bevat geen slides"
+
+        # Aspect-correcte target-dims via PageSetup.
+        # SlideWidth/Height zijn in points (1 pt = 1/72 inch); we hebben
+        # alleen de verhouding nodig.
+        try:
+            slide_w = float(presentation.PageSetup.SlideWidth)
+            slide_h = float(presentation.PageSetup.SlideHeight)
+        except Exception:
+            slide_w, slide_h = 1280.0, 720.0  # 16:9 fallback
+        if slide_w <= 0 or slide_h <= 0:
+            slide_w, slide_h = 1280.0, 720.0
+        if slide_w >= slide_h:
+            target_w = int(max_dim)
+            target_h = max(1, int(round(max_dim * slide_h / slide_w)))
+        else:
+            target_h = int(max_dim)
+            target_w = max(1, int(round(max_dim * slide_w / slide_h)))
+
+        paths: list[str] = []
+        for i in range(1, slide_count + 1):
+            target = out_dir / f"slide_{i:03d}.png"
+            try:
+                presentation.Slides(i).Export(
+                    str(target), "PNG", target_w, target_h
+                )
+            except Exception as e:
+                return False, paths, f"Export van slide {i} mislukt: {e}"
+            paths.append(str(target))
+            if progress_callback is not None:
+                cancelled = bool(progress_callback(i, slide_count))
+                if cancelled:
+                    return False, paths, "Geannuleerd"
+
+        return True, paths, ""
+    finally:
+        if presentation is not None:
+            try:
+                # Markeer als 'opgeslagen' zodat Close() nooit een save-
+                # prompt triggert. Slide.Export modificeert het document
+                # niet, maar PowerPoint kan om interne redenen toch een
+                # 'modified' flag zetten — defensief afvangen.
+                presentation.Saved = True
+            except Exception:
+                pass
+            try:
+                presentation.Close()
+            except Exception:
+                pass
+        if app is not None and we_started_app:
+            try:
+                app.Quit()
+            except Exception:
+                pass
+        try:
+            pythoncom.CoUninitialize()
+        except Exception:
+            pass
 
 
 # Optionele dependency — engine werkt degraded zonder.

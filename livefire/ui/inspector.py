@@ -54,6 +54,9 @@ class InspectorWidget(QWidget):
         # Presentatie-actie en slide-nummer zijn per cue logisch (bulk-edit
         # naar bv. "Volgende slide" zou álle cues onderling vervangen).
         "presentation_action", "presentation_slide",
+        # Network-address/-args is per cue (verschillende OSC-paths per cue).
+        # Host en port zijn vaak gelijk over cues heen — laat die bulk-editable.
+        "network_address", "network_args",
     })
 
     def __init__(self, workspace: Workspace, parent=None):
@@ -85,6 +88,31 @@ class InspectorWidget(QWidget):
         f.setBold(True)
         self.header.setFont(f)
         lay.addWidget(self.header)
+
+        # Pro-licentie banner — verborgen als het cue-type gratis is of de
+        # gebruiker een Pro-licentie heeft. Anders toont 'm een waarschuwing
+        # boven het formulier en blijven inputs gewoon werkbaar (je mag
+        # bouwen, alleen GO is geblokkeerd).
+        from .. import licensing as _lic
+        self.banner_pro = QLabel()
+        self.banner_pro.setWordWrap(True)
+        self.banner_pro.setStyleSheet(
+            "background-color: #4d3a1f;"
+            "color: #ffd27a;"
+            "padding: 8px;"
+            "border: 1px solid #806033;"
+            "border-radius: 4px;"
+        )
+        self.banner_pro.setText(
+            "🔒 Dit cue-type vereist een Pro-licentie om bij GO af te "
+            "spelen. Bouwen mag wel — open Help → Licentie… om te "
+            "activeren of een licentie aan te schaffen."
+        )
+        self.banner_pro.setVisible(False)
+        lay.addWidget(self.banner_pro)
+        # Refresh banner ook wanneer de licentie elders wordt gewijzigd
+        # (bv. via Help → Licentie…). Connectie naar de module-level signaler.
+        _lic.signaler.license_changed.connect(self._refresh_pro_banner)
 
         # ---- Basis-groep ---------------------------------------------------
         grp_basic = QGroupBox(t("group.general"))
@@ -248,6 +276,41 @@ class InspectorWidget(QWidget):
 
         lay.addWidget(self.grp_video)
 
+        # ---- Image ---------------------------------------------------------
+        # Voor losse afbeeldingen én voor slides die uit een PPT zijn
+        # geëxporteerd (zie PptImportDialog → MODE_SLIDES).
+        self.grp_image = QGroupBox(t("group.image"))
+        il = QFormLayout(self.grp_image)
+        image_path_row = QHBoxLayout()
+        self.ed_image_path = QLineEdit()
+        self.ed_image_path.setToolTip("Pad naar het afbeeldingsbestand (PNG/JPG/...).")
+        self.btn_browse_image = QPushButton("Bladeren…")
+        self.btn_browse_image.setToolTip("Kies een afbeelding.")
+        self.btn_browse_image.clicked.connect(self._browse_image)
+        image_path_row.addWidget(self.ed_image_path)
+        image_path_row.addWidget(self.btn_browse_image)
+        ipc = QWidget()
+        ipc.setLayout(image_path_row)
+        il.addRow("Bestand", ipc)
+        self.cb_image_screen = QComboBox()
+        self.cb_image_screen.setToolTip(
+            "Monitor waarop deze afbeelding fullscreen wordt weergegeven."
+        )
+        for idx, label in list_screens():
+            self.cb_image_screen.addItem(label, idx)
+        il.addRow("Output-scherm", self.cb_image_screen)
+        self.sp_image_fade_in = self._spin_seconds(max_val=600.0)
+        self.sp_image_fade_in.setToolTip("Fade-in vanuit zwart.")
+        self.sp_image_fade_out = self._spin_seconds(max_val=600.0)
+        self.sp_image_fade_out.setToolTip(
+            "Fade-out aan het einde. Alleen relevant als Duur > 0; bij Duur "
+            "= 0 blijft de afbeelding staan tot een volgende image-cue op "
+            "hetzelfde scherm hem vervangt of een Stop-cue 'm afsluit."
+        )
+        il.addRow("Fade-in (s)", self.sp_image_fade_in)
+        il.addRow("Fade-out (s)", self.sp_image_fade_out)
+        lay.addWidget(self.grp_image)
+
         # ---- Presentation --------------------------------------------------
         self.grp_presentation = QGroupBox(t("group.presentation"))
         ppl = QFormLayout(self.grp_presentation)
@@ -280,6 +343,68 @@ class InspectorWidget(QWidget):
         self._ppt_form = ppl
 
         lay.addWidget(self.grp_presentation)
+
+        # ---- Network (OSC-out) -------------------------------------------
+        self.grp_network = QGroupBox(t("group.network"))
+        nl = QFormLayout(self.grp_network)
+        self.ed_net_address = QLineEdit()
+        self.ed_net_address.setPlaceholderText("/companion/page/1/button/1")
+        self.ed_net_address.setToolTip(
+            "OSC-address. Moet met / beginnen.\n"
+            "Companion: /companion/page/<P>/button/<B>\n"
+            "QLab:      /cue/<nr>/start"
+        )
+        nl.addRow("Address", self.ed_net_address)
+
+        host_port_row = QHBoxLayout()
+        self.ed_net_host = QLineEdit()
+        self.ed_net_host.setPlaceholderText("127.0.0.1")
+        self.ed_net_host.setToolTip(
+            "Hostnaam of IP-adres van de ontvanger."
+        )
+        self.sp_net_port = QSpinBox()
+        self.sp_net_port.setRange(1, 65535)
+        self.sp_net_port.setValue(53000)
+        self.sp_net_port.setToolTip(
+            "UDP-poort van de ontvanger.\n"
+            "Companion: 12321 (default)\n"
+            "QLab:      53000 (default)"
+        )
+        host_port_row.addWidget(self.ed_net_host, 3)
+        host_port_row.addWidget(QLabel("Port:"))
+        host_port_row.addWidget(self.sp_net_port, 1)
+        hpw = QWidget()
+        hpw.setLayout(host_port_row)
+        nl.addRow("Host", hpw)
+
+        self.ed_net_args = QLineEdit()
+        self.ed_net_args.setPlaceholderText("1, 0.5, \"hello world\"")
+        self.ed_net_args.setToolTip(
+            "OSC-arguments, comma-gescheiden.\n"
+            "Token-types: int → float → string (in die volgorde).\n"
+            "Quote met \" of ' om strings met spaties of komma's te bewaren.\n"
+            "Voorbeelden:\n"
+            "  channel, 1, 0.5\n"
+            "  \"hello world\", 42\n"
+            "Leeg = address zonder args."
+        )
+        nl.addRow("Args", self.ed_net_args)
+
+        self.btn_net_send = QPushButton(t("btn.test_send"))
+        self.btn_net_send.setToolTip(
+            "Verstuur dit OSC-bericht direct naar de host:port "
+            "zonder de cue te draaien — handig voor het instellen "
+            "van Companion-knoppen of QLab-cues."
+        )
+        self.btn_net_send.clicked.connect(self._test_send_osc)
+        net_btn_row = QHBoxLayout()
+        net_btn_row.addStretch(1)
+        net_btn_row.addWidget(self.btn_net_send)
+        nbw = QWidget()
+        nbw.setLayout(net_btn_row)
+        nl.addRow("", nbw)
+
+        lay.addWidget(self.grp_network)
 
         # ---- Wait ----------------------------------------------------------
         self.grp_wait = QGroupBox(t("group.wait"))
@@ -376,14 +501,26 @@ class InspectorWidget(QWidget):
             # je één range hebt om over na te denken (workspace blijft compat).
             self.sp_video_volume:   ("volume_db",           lambda: self.sp_video_volume.value()),
             self.chk_video_last_frame: ("video_last_frame_store", lambda: self.chk_video_last_frame.isChecked()),
+            # Image
+            self.ed_image_path:        ("file_path",            lambda: self.ed_image_path.text()),
+            self.cb_image_screen:      ("image_output_screen",  lambda: self.cb_image_screen.currentData()),
+            self.sp_image_fade_in:     ("image_fade_in",        lambda: self.sp_image_fade_in.value()),
+            self.sp_image_fade_out:    ("image_fade_out",       lambda: self.sp_image_fade_out.value()),
             # Presentation
             self.cb_ppt_action:     ("presentation_action", lambda: self.cb_ppt_action.currentData()),
             self.ed_ppt_path:       ("file_path",           lambda: self.ed_ppt_path.text()),
             self.sp_ppt_slide:      ("presentation_slide",  lambda: self.sp_ppt_slide.value()),
+            # Network (OSC-out)
+            self.ed_net_address:    ("network_address",     lambda: self.ed_net_address.text()),
+            self.ed_net_host:       ("network_host",        lambda: self.ed_net_host.text()),
+            self.sp_net_port:       ("network_port",        lambda: self.sp_net_port.value()),
+            self.ed_net_args:       ("network_args",        lambda: self.ed_net_args.text()),
         }
 
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
-                  self.ed_trigger_osc, self.ed_video_path, self.ed_ppt_path):
+                  self.ed_trigger_osc, self.ed_video_path, self.ed_ppt_path,
+                  self.ed_image_path,
+                  self.ed_net_address, self.ed_net_host, self.ed_net_args):
             if isinstance(w, QPlainTextEdit):
                 w.textChanged.connect(self._on_any_change)
             else:
@@ -393,7 +530,9 @@ class InspectorWidget(QWidget):
                   self.sp_wait, self.sp_fade_target,
                   self.sp_video_fade_in, self.sp_video_fade_out,
                   self.sp_video_in, self.sp_video_out,
-                  self.sp_video_volume, self.sp_ppt_slide):
+                  self.sp_video_volume, self.sp_ppt_slide,
+                  self.sp_image_fade_in, self.sp_image_fade_out,
+                  self.sp_net_port):
             w.valueChanged.connect(self._on_any_change)
         self.sp_loops.valueChanged.connect(self._on_any_change)
         self.cb_type.currentIndexChanged.connect(self._on_type_change)
@@ -401,6 +540,7 @@ class InspectorWidget(QWidget):
         self.cb_target.currentIndexChanged.connect(self._on_any_change)
         self.cb_color.currentIndexChanged.connect(self._on_any_change)
         self.cb_video_screen.currentIndexChanged.connect(self._on_any_change)
+        self.cb_image_screen.currentIndexChanged.connect(self._on_any_change)
         self.cb_ppt_action.currentIndexChanged.connect(self._on_any_change)
         self.cb_ppt_action.currentIndexChanged.connect(self._update_ppt_visibility)
         self.chk_fade_stops.toggled.connect(self._on_any_change)
@@ -454,9 +594,12 @@ class InspectorWidget(QWidget):
 
         if not self.cues:
             self.header.setText("Geen cue geselecteerd")
+            self.banner_pro.setVisible(False)
             self.grp_audio.setVisible(False)
             self.grp_video.setVisible(False)
+            self.grp_image.setVisible(False)
             self.grp_presentation.setVisible(False)
+            self.grp_network.setVisible(False)
             self.grp_wait.setVisible(False)
             self.grp_target.setVisible(False)
             self.content.setEnabled(False)
@@ -515,12 +658,26 @@ class InspectorWidget(QWidget):
         self.sp_video_volume.setValue(min(0.0, cue.volume_db))
         self.chk_video_last_frame.setChecked(cue.video_last_frame_store)
 
+        # Image-velden
+        self.ed_image_path.setText(cue.file_path if not multi else "")
+        idx_iscreen = self.cb_image_screen.findData(cue.image_output_screen)
+        if idx_iscreen >= 0:
+            self.cb_image_screen.setCurrentIndex(idx_iscreen)
+        self.sp_image_fade_in.setValue(cue.image_fade_in)
+        self.sp_image_fade_out.setValue(cue.image_fade_out)
+
         # Presentation-velden
         idx_action = self.cb_ppt_action.findData(cue.presentation_action)
         if idx_action >= 0:
             self.cb_ppt_action.setCurrentIndex(idx_action)
         self.ed_ppt_path.setText(cue.file_path if not multi else "")
         self.sp_ppt_slide.setValue(max(1, cue.presentation_slide))
+
+        # Network-velden (OSC-out)
+        self.ed_net_address.setText(cue.network_address if not multi else "")
+        self.ed_net_host.setText(cue.network_host)
+        self.sp_net_port.setValue(cue.network_port if cue.network_port > 0 else 53000)
+        self.ed_net_args.setText(cue.network_args if not multi else "")
 
         # Thumbnail-preview alleen laden voor single-select VIDEO-cues.
         if not multi and cue.cue_type == CueType.VIDEO and cue.file_path:
@@ -542,7 +699,9 @@ class InspectorWidget(QWidget):
                   self.ed_trigger_osc, self.cb_target, self.btn_browse,
                   self.btn_learn_osc, self.ed_video_path, self.btn_browse_video,
                   self.ed_ppt_path, self.btn_browse_ppt, self.cb_ppt_action,
-                  self.sp_ppt_slide):
+                  self.sp_ppt_slide,
+                  self.ed_image_path, self.btn_browse_image,
+                  self.ed_net_address, self.ed_net_args, self.btn_net_send):
             w.setEnabled(not multi)
 
         self._updating = False
@@ -550,10 +709,24 @@ class InspectorWidget(QWidget):
     def _update_visibility(self, cue_type: str) -> None:
         self.grp_audio.setVisible(cue_type == CueType.AUDIO)
         self.grp_video.setVisible(cue_type == CueType.VIDEO)
+        self.grp_image.setVisible(cue_type == CueType.IMAGE)
         self.grp_presentation.setVisible(cue_type == CueType.PRESENTATION)
+        self.grp_network.setVisible(cue_type == CueType.NETWORK)
         self.grp_wait.setVisible(cue_type == CueType.WAIT)
         self.grp_target.setVisible(cue_type in (CueType.STOP, CueType.FADE, CueType.START))
         self._update_ppt_visibility()
+        self._refresh_pro_banner()
+
+    def _refresh_pro_banner(self) -> None:
+        """Toon de licentie-banner als de geselecteerde cue een Pro-type is
+        en er geen actieve Pro-licentie is. Roept zich opnieuw aan op een
+        license_changed-signal."""
+        from .. import licensing as _lic
+        if not self.cue:
+            self.banner_pro.setVisible(False)
+            return
+        needs_pro = self.cue.cue_type in _lic.PAID_CUE_TYPES
+        self.banner_pro.setVisible(needs_pro and not _lic.is_pro())
 
     def _update_ppt_visibility(self) -> None:
         """Toon alleen de velden die relevant zijn voor de gekozen
@@ -693,6 +866,24 @@ class InspectorWidget(QWidget):
             if should_fill and self.cue is not None and not len(self.cues) > 1:
                 self.ed_name.setText(Path(path).stem)
 
+    def _browse_image(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Kies afbeelding", "",
+            "Afbeeldingen (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp);;Alle bestanden (*)",
+        )
+        if not path:
+            return
+        old_path = self.ed_image_path.text().strip()
+        name = self.ed_name.text().strip()
+        auto_default = bool(re.match(
+            r"^(?:" + "|".join(CueType.ALL) + r") \d+$", name
+        ))
+        from_old_file = bool(old_path) and name == Path(old_path).stem
+        should_fill = not name or auto_default or from_old_file
+        self.ed_image_path.setText(path)
+        if should_fill and self.cue is not None and not len(self.cues) > 1:
+            self.ed_name.setText(Path(path).stem)
+
     def _browse_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Kies audio-bestand", "",
@@ -721,6 +912,37 @@ class InspectorWidget(QWidget):
     # ---- trigger-learn ----------------------------------------------------
 
     osc_engine = None  # wordt door MainWindow gezet: inspector.osc_engine = …
+
+    # Door MainWindow gezet: inspector.osc_out_engine = controller.osc_out
+    osc_out_engine = None
+
+    def _test_send_osc(self) -> None:
+        """Verstuur het OSC-bericht uit de Network-groep direct, zonder
+        de cue te hoeven afspelen — handig voor het inrichten van
+        Companion-knoppen of QLab-cues."""
+        from PyQt6.QtWidgets import QMessageBox
+        from ..engines.osc_out import parse_args
+        if self.osc_out_engine is None:
+            QMessageBox.warning(
+                self, "OSC-output niet beschikbaar",
+                "De OSC-output engine is niet aangesloten.",
+            )
+            return
+        addr = self.ed_net_address.text().strip()
+        host = self.ed_net_host.text().strip() or "127.0.0.1"
+        port = self.sp_net_port.value()
+        args = parse_args(self.ed_net_args.text())
+        ok, err = self.osc_out_engine.send(host, port, addr, args)
+        if not ok:
+            QMessageBox.warning(self, "OSC-versturen mislukt", err)
+            return
+        # Compacte bevestiging in de statusbar van het hoofdvenster zou
+        # mooi zijn; voor nu een korte tooltip-flash op de knop.
+        self.btn_net_send.setText(t("btn.test_send.done"))
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(
+            1200, lambda: self.btn_net_send.setText(t("btn.test_send"))
+        )
 
     def _learn_osc(self) -> None:
         """Open een modal die wacht op de volgende OSC-message en 'm invult."""

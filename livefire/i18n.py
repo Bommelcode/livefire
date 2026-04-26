@@ -27,7 +27,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         # voor JSON-stabiliteit van workspaces).
         "cuetype.Audio":        "Audio",
         "cuetype.Video":        "Video",
+        "cuetype.Image":        "Afbeelding",
         "cuetype.Presentation": "Presentatie",
+        "cuetype.Network":      "Network",
         "cuetype.Group":        "Groep",
         "cuetype.Wait":         "Wacht",
         "cuetype.Stop":         "Stop",
@@ -54,7 +56,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "group.timing":       "Timing",
         "group.audio":        "Audio",
         "group.video":        "Video",
+        "group.image":        "Afbeelding",
         "group.presentation": "Presentatie",
+        "group.network":      "Network (OSC-out)",
         "group.wait":         "Wacht",
         "group.target":       "Doel",
         "group.triggers":     "Triggers",
@@ -78,11 +82,40 @@ _STRINGS: dict[str, dict[str, str]] = {
         "prefs.language.restart_title": "Herstart vereist",
         "prefs.language.restart_body":
             "De taalwijziging wordt actief na een herstart van liveFire.",
+        # PPT-import dialog (v0.4.1)
+        "pptimport.title":            "PowerPoint toevoegen",
+        "pptimport.question":         "Hoe wil je deze toevoegen?",
+        "pptimport.opt_slides":       "Slides als ingebedde afbeeldingen",
+        "pptimport.opt_slides_desc_n":
+            "Exporteert {n} slides naar PNG en plaatst één Afbeelding-cue "
+            "per slide. PowerPoint is daarna niet meer nodig om de show "
+            "te draaien.",
+        "pptimport.opt_slides_desc_unknown":
+            "Exporteert iedere slide naar PNG en plaatst één Afbeelding-"
+            "cue per slide. PowerPoint is daarna niet meer nodig om de "
+            "show te draaien.",
+        "pptimport.opt_slides_unavailable":
+            "Vereist Microsoft PowerPoint op deze machine om de slides "
+            "te kunnen exporteren.",
+        "pptimport.opt_single":       "Eén Presentatie-cue",
+        "pptimport.opt_single_desc":
+            "Opent de show in PowerPoint; volgende/vorige slide regel je "
+            "via aparte cues.",
+        "pptimport.slide_count_label": "Aantal slides:",
+        "pptimport.apply_to_all":      "Toepassen op alle PPTs in deze drop",
+        "pptimport.exporting_title":   "Slides exporteren",
+        "pptimport.exporting_label":   "Slide {i} van {n}…",
+        "pptimport.export_failed":     "Slide-export mislukt",
+        # Network test-send knop
+        "btn.test_send":      "Test verzenden",
+        "btn.test_send.done": "Verzonden ✓",
     },
     "en": {
         "cuetype.Audio":        "Audio",
         "cuetype.Video":        "Video",
+        "cuetype.Image":        "Image",
         "cuetype.Presentation": "Presentation",
+        "cuetype.Network":      "Network",
         "cuetype.Group":        "Group",
         "cuetype.Wait":         "Wait",
         "cuetype.Stop":         "Stop",
@@ -105,7 +138,9 @@ _STRINGS: dict[str, dict[str, str]] = {
         "group.timing":       "Timing",
         "group.audio":        "Audio",
         "group.video":        "Video",
+        "group.image":        "Image",
         "group.presentation": "Presentation",
+        "group.network":      "Network (OSC-out)",
         "group.wait":         "Wait",
         "group.target":       "Target",
         "group.triggers":     "Triggers",
@@ -126,6 +161,31 @@ _STRINGS: dict[str, dict[str, str]] = {
         "prefs.language.restart_title": "Restart required",
         "prefs.language.restart_body":
             "The language change takes effect after restarting liveFire.",
+        # PPT-import dialog (v0.4.1)
+        "pptimport.title":            "Add PowerPoint",
+        "pptimport.question":         "How would you like to add this?",
+        "pptimport.opt_slides":       "Slides as embedded images",
+        "pptimport.opt_slides_desc_n":
+            "Exports {n} slides to PNG and inserts one Image cue per "
+            "slide. PowerPoint is no longer needed to run the show.",
+        "pptimport.opt_slides_desc_unknown":
+            "Exports each slide to PNG and inserts one Image cue per "
+            "slide. PowerPoint is no longer needed to run the show.",
+        "pptimport.opt_slides_unavailable":
+            "Requires Microsoft PowerPoint on this machine to export "
+            "the slides.",
+        "pptimport.opt_single":       "Single Presentation cue",
+        "pptimport.opt_single_desc":
+            "Opens the show in PowerPoint; next/previous slide is handled "
+            "by separate cues.",
+        "pptimport.slide_count_label": "Slide count:",
+        "pptimport.apply_to_all":      "Apply to all PPTs in this drop",
+        "pptimport.exporting_title":   "Exporting slides",
+        "pptimport.exporting_label":   "Slide {i} of {n}…",
+        "pptimport.export_failed":     "Slide export failed",
+        # Network test-send knop
+        "btn.test_send":      "Test send",
+        "btn.test_send.done": "Sent ✓",
     },
 }
 

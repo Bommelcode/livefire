@@ -5,6 +5,185 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-04-26
+
+Image-cue als nieuw cue-type, plus PPT-import-keuze: laat de show
+draaien op ingebedde slide-PNGs (geen PowerPoint nodig tijdens de show)
+of gebruik PowerPoint als speler.
+
+### Toegevoegd
+- **Image-cue** — fullscreen still-images via een nieuwe Qt-only
+  `ImageEngine` (geen libVLC nodig). Eén actieve image per output-scherm;
+  een tweede image-cue op hetzelfde scherm vervangt de eerste hard.
+  Velden: `file_path`, `image_output_screen`, `image_fade_in`,
+  `image_fade_out`. Cue-`duration > 0` zorgt voor auto-fade-out na N
+  seconden; `duration == 0` laat de image staan tot vervanging of een
+  Stop-cue. Inspector heeft nu een Afbeelding-groep.
+- **Drag-drop van .png/.jpg/.webp/etc.** maakt nu een echte Image-cue
+  (was Memo placeholder).
+- **PPT-import-dialog bij drag-drop van .pptx/.pptm/.ppt.** Twee opties:
+  *Slides als ingebedde afbeeldingen* (default) exporteert iedere slide
+  via PowerPoint COM naar PNG in
+  `<pptx_parent>/<pptx_stem>_slides/slide_NNN.png` en plaatst per slide
+  een Image-cue — de show draait daarna zonder PowerPoint;
+  *Eén Presentatie-cue* (oude gedrag) plaatst alleen een Open-cue.
+  Slide-aantal voor `.pptx`/`.pptm` wordt vooraf in de dialog getoond
+  via een pure-Python ZIP-XML-telling (geen PowerPoint-launch nodig).
+  Bij meerdere PPTs in dezelfde drop verschijnt een
+  *Toepassen op alle*-checkbox.
+- **Slide-export via COM** — nieuwe `export_slides_to_png(file_path,
+  output_dir, width, height, progress_callback)`-helper. Opent de
+  presentatie read-only zonder window, minimaliseert eventuele
+  editor-windows en exporteert per `Slide.Export(..., "PNG", w, h)`.
+  Default 1920×1080. Cancel-support via callback (return `True`).
+- **QProgressDialog** tijdens de export, modal, met cancel-knop en per-
+  slide voortgang.
+- i18n-keys: `cuetype.Image`, `group.image`, alle `pptimport.*`-strings
+  in NL en EN.
+- **Crossfade tussen image-cues op hetzelfde scherm.** Wanneer een
+  nieuwe image-cue met `image_fade_in > 0` start op een scherm waar al
+  een cue draait, krijgt de oude een fade-out van dezelfde duur en
+  zijn beide windows kort gelijktijdig zichtbaar (nieuwere bovenop).
+  Een vorige cue die zelf al een fade-out had ingezet (Stop-cue,
+  duration verlopen) loopt op z'n eigen tempo uit. Bij `image_fade_in
+  == 0` blijft de oude harde-cut-vervang gedrag actief zodat onnodige
+  pixmaps niet in geheugen blijven hangen.
+- **Network-cue** voor OSC-out. Nieuw cue-type dat een OSC-message
+  stuurt naar een externe ontvanger (Companion, QLab, mengtafel,
+  lichttafel). Velden: `network_address` (bv.
+  `/companion/page/1/button/1`), `network_args` (comma-separated tekst
+  met auto-typing int → float → string en `"..."`-quoting),
+  `network_host` (default `127.0.0.1`), `network_port` (default 53000).
+  Verzenden gebeurt synchroon vanuit `_begin_action` (UDP, geen retry).
+  Inspector heeft een **"Test verzenden"-knop** zodat je tijdens het
+  bouwen van een show de connectie kunt valideren zonder een GO te
+  doen. Nieuwe `OscOutputEngine` (in `engines/osc_out.py`) hergebruikt
+  de bestaande `python-osc` dependency. Menu-item *Cue → Nieuwe
+  Network-cue*.
+- **Menu-item Nieuwe Afbeelding-cue (Ctrl+0)** — voorheen alleen
+  bereikbaar via drag-drop of door een bestaand cue-type via de
+  inspector om te zetten naar Image.
+
+### Gewijzigd
+- `CueType.ALL` bevat nu `IMAGE` (tussen `VIDEO` en `PRESENTATION`).
+- Workspace-format blijft v2; nieuwe image-velden krijgen defaults
+  bij oude workspaces zonder migratie.
+
+### Bekend
+- Slide-export vereist Microsoft PowerPoint op Windows. Zonder
+  COM is de slides-optie in de import-dialog automatisch uitgeschakeld
+  en valt de keuze terug op één Presentatie-cue.
+- Goto-cues per slide (PowerPoint blijft de speler) zijn niet als optie
+  opgenomen — die rol vervult nu de single Presentatie-cue plus
+  handmatige Volgende/Vorige-cues vanuit de inspector.
+
+### Verholpen (debug-pass)
+- ImageWindow heeft `WA_DeleteOnClose=False` (was `True`) om te
+  voorkomen dat een lopende `QPropertyAnimation` op een net gedelete
+  Qt-object schiet bij teardown.
+- ImageWindow start expliciet op `windowOpacity=0` in `__init__` zodat
+  fade-in geen 100%-flash geeft op Windows tussen `show()` en de eerste
+  animation-frame.
+- `QPropertyAnimation` voor image fade-in/-out heeft nu het window
+  zelf als parent (was de engine), zodat anim met window mee opruimt.
+- `_hard_close` en `_finalize_close` doen nu expliciet `deleteLater()`
+  na `close()`.
+- `export_slides_to_png` schaalt slide-resolutie aspect-correct via
+  `Presentation.PageSetup.SlideWidth/SlideHeight` in plaats van een
+  vaste 1920×1080 (die 4:3 presentaties zou stretchen). Default
+  `max_dim=1920` voor de langste zijde.
+- `ImageEngine.is_playing()` komt nu overeen met `VideoEngine.is_playing()`-
+  contract: `True` zolang de engine de cue beheert (inclusief tijdens
+  fade-out), `False` pas zodra de entry uit `_active` is verwijderd.
+  Daarmee start `post_wait` in de controller pas ná de visuele fade-out
+  in plaats van ertijdens (eerder dan de bedoeling).
+- ImageWindow `_rescale` is nu high-DPI-aware: schaalt naar `size() ×
+  devicePixelRatio` en zet de DPR op de output-pixmap. Op een 4K
+  projector met 200% scaling levert dit een scherp beeld in plaats van
+  een uitgerekte 1080p-versie.
+- `Presentation.Saved = True` voor `Close()` zodat PowerPoint nooit een
+  save-prompt opent na slide-export, zelfs als het z'n eigen 'modified'-
+  flag zet.
+- Dood `from ..cues import PresentationAction` boven aan
+  `_on_files_dropped` opgeruimd.
+- Inspector verbergt bij deselect (`set_cues([])`) ook `grp_image` en
+  `grp_network` — voorheen bleven die met stale data zichtbaar van de
+  vorige cue.
+- `export_slides_to_png` vangt `OSError` bij `mkdir` op (bv. geen
+  schrijfrechten op de pptx-parent) en retourneert een nette
+  foutmelding in plaats van te crashen.
+- `OscOutputEngine` cache't `SimpleUDPClient` per `(host, port)` zodat
+  Network-cue chains niet voor iedere cue een nieuwe socket openen
+  (ephemeral-port range bescherming + minder TIME_WAIT-resten).
+  `shutdown()` sluit alle gecachede sockets; corrupte clients worden
+  geëvict op send-fout.
+- `parse_args` op OSC-args houdt gequote tokens *altijd* string,
+  ongeacht inhoud — `"42"` is string `"42"`, niet int `42`. Quoted
+  whitespace blijft bewaard (`" "` → `" "`); ongequote tokens worden
+  gestript en lege ongequote tokens (consecutive comma's, trailing
+  comma) overgeslagen.
+- Test-knop op Network-cue gebruikt nu `i18n` (`btn.test_send` /
+  `btn.test_send.done`) — vertaalt mee met taalwissel.
+- `PlaybackController` heeft een `network_send_failed(cue_id, error)`
+  signal dat fire't wanneer een Network-cue's OSC-send mislukt
+  (lege/ongeldige address, python-osc niet beschikbaar). De show
+  blokkeert niet — de cue gaat door naar post_wait — maar de UI
+  heeft nu een hook om het te tonen.
+- `stop_all` (Esc / Stop All) sluit nu ook een actieve PowerPoint-
+  slideshow. Voorheen bleef die fullscreen over de cuelist hangen
+  tot een Close-cue.
+
+### Toegevoegd
+- **Freemium licensing.** Audio + organisatorische cues (Wacht, Stop,
+  Fade, Start, Groep, Memo) zijn altijd gratis. Video, Afbeelding,
+  Presentatie en Network vereisen een Pro-licentie. Vier termijnen:
+  dag (€ 4,95), maand (€ 13,95), jaar (€ 139,95), lifetime (€ 249,95).
+  Bouwen mag altijd — alleen GO op een Pro-cue zonder licentie wordt
+  geblokkeerd, met een waarschuwing in de statusbar.
+- **`livefire/licensing.py`** — module-level API met `init()`,
+  `current_tier()`, `is_pro()`, `has_feature(cue_type)`,
+  `activate(key)`, `deactivate()`, plus een `signaler.license_changed`
+  Qt-signal voor UI-componenten. Constants: `PAID_CUE_TYPES`,
+  `PRICES_EUR`, `PURCHASE_URL`. Key-format
+  ``LF-<TIER>-<YYYY-MM-DD>-<HMAC8>`` met HMAC-SHA256 over
+  ``"<TIER>|<expires>"`` — volledig lokaal te valideren, geen server
+  roundtrip nodig. Sil's eigen tooling roept `generate_key(tier,
+  expires)` aan om keys uit te delen aan klanten; verlopen keys
+  verliezen automatisch hun rechten.
+- **Help → Licentie…**-dialog — toont status, drie koop-knoppen die
+  de browser openen op `<PURCHASE_URL>?tier=...`, een veld om een key
+  te plakken + Activeer-knop, en een Verwijder-knop voor wie de
+  licentie wil intrekken.
+- **`PlaybackController.cue_blocked_by_license`** signal — emit'ed
+  wanneer `_begin_action` een paid cue tegenkomt zonder Pro. De cue
+  wordt overgeslagen, AUTO_CONTINUE chain't door zodat de show niet
+  vastloopt, en MainWindow flash't 6 sec lang een melding in de
+  statusbar.
+- **Inspector Pro-banner** — zichtbaar als de geselecteerde cue een
+  Pro-type is en je hebt geen actieve licentie. Verbergt zich
+  automatisch zodra je een licentie activeert (via
+  `licensing.signaler.license_changed`).
+- `parse_args` (OSC-out token-parsing) gefixt:
+  (a) gequote whitespace-strings (`" "`) gingen verloren aan
+  ``.strip()``-en-skip-on-empty;
+  (b) gequote numerieke strings (`"42"`) werden naar int gecoerced —
+  een gequote token moet altijd string blijven (OSC-conventie);
+  (c) gemixt-quoted tokens (`1, "hello"`) hadden de leading whitespace
+  als deel van de string. Nieuw: per-karakter quote-tracking, alleen
+  *unquoted* whitespace aan begin/eind wordt gestript.
+- `PlaybackController.stop_all()` sluit nu ook een actieve PowerPoint-
+  slideshow. Esc / Stop All zou anders het PowerPoint-window over de
+  cuelist laten staan tot een Close-cue. Bestaand bug — niet
+  geïntroduceerd in v0.4.1, maar wel opgelost.
+- Network-cue OSC-send-fouten worden gesignaleerd via een nieuwe
+  `network_send_failed(cue_id, error_message)`-signal op de
+  `PlaybackController`. MainWindow connect en toont 4s een
+  ⚠-melding in de statusbar zodat de operator weet dat een trigger
+  niet aankwam (UDP heeft geen native ack — ander zou het 'silent'
+  zijn).
+- Lazy import van `parse_args` in de controller's tick-loop verplaatst
+  naar module-top (cosmetisch).
+
 ## [0.4.0] — 2026-04-25
 
 Grote feature-release. Bevat alles wat de oorspronkelijke roadmap voor
