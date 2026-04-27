@@ -170,6 +170,11 @@ class InspectorWidget(QWidget):
         # Network-address/-args is per cue (verschillende OSC-paths per cue).
         # Host en port zijn vaak gelijk over cues heen — laat die bulk-editable.
         "network_address", "network_args",
+        # DMX-values en chase-steps zijn evident per cue (een snapshot is
+        # cue-specifiek). Universe / protocol / host / port mogen bulk
+        # zodat een hele set DMX-cues in één klap naar een ander rig
+        # gerouteerd kan worden.
+        "dmx_values", "dmx_chase_steps",
     })
 
     def __init__(self, workspace: Workspace, parent=None):
@@ -515,6 +520,103 @@ class InspectorWidget(QWidget):
 
         lay.addWidget(self.grp_network)
 
+        # ---- DMX (Art-Net + sACN, v0.5.0) --------------------------------
+        self.grp_dmx = QGroupBox(t("group.dmx"))
+        dl = QFormLayout(self.grp_dmx)
+
+        self.cb_dmx_protocol = QComboBox()
+        self.cb_dmx_protocol.addItem("Art-Net", "artnet")
+        self.cb_dmx_protocol.addItem("sACN (E1.31)", "sacn")
+        self.cb_dmx_protocol.setToolTip(
+            "Art-Net = UDP unicast/broadcast op port 6454.\n"
+            "sACN = E1.31 multicast 239.255.<hi>.<lo> port 5568."
+        )
+        dl.addRow("Protocol", self.cb_dmx_protocol)
+
+        self.sp_dmx_universe = QSpinBox()
+        self.sp_dmx_universe.setRange(0, 32767)
+        self.sp_dmx_universe.setToolTip(
+            "DMX universe number. Art-Net packs subnet+net+universe in 15 bits; "
+            "sACN uses 16-bit universe (typical 1..63999)."
+        )
+        dl.addRow("Universe", self.sp_dmx_universe)
+
+        dmx_host_row = QHBoxLayout()
+        self.ed_dmx_host = QLineEdit()
+        self.ed_dmx_host.setPlaceholderText("(broadcast / multicast)")
+        self.ed_dmx_host.setToolTip(
+            "Target IP. Empty = broadcast (Art-Net) or multicast group "
+            "(sACN). Use a unicast IP to address one node."
+        )
+        self.sp_dmx_port = QSpinBox()
+        self.sp_dmx_port.setRange(1, 65535)
+        self.sp_dmx_port.setToolTip(
+            "UDP port. Art-Net default 6454; sACN default 5568."
+        )
+        dmx_host_row.addWidget(self.ed_dmx_host, 3)
+        dmx_host_row.addWidget(QLabel("Port:"))
+        dmx_host_row.addWidget(self.sp_dmx_port, 1)
+        dmx_host_container = QWidget()
+        dmx_host_container.setLayout(dmx_host_row)
+        dl.addRow("Host", dmx_host_container)
+
+        self.cb_dmx_mode = QComboBox()
+        self.cb_dmx_mode.addItem("Snapshot", "snapshot")
+        self.cb_dmx_mode.addItem("Fade", "fade")
+        self.cb_dmx_mode.addItem("Chase", "chase")
+        self.cb_dmx_mode.setToolTip(
+            "Snapshot — apply values instantly (LTP overrides previous cues).\n"
+            "Fade — linear ramp from current to target over Fade time.\n"
+            "Chase — cycle through chase steps with the configured step time."
+        )
+        dl.addRow("Mode", self.cb_dmx_mode)
+
+        self.ed_dmx_values = QPlainTextEdit()
+        self.ed_dmx_values.setPlaceholderText("1:255, 17:128, 33:64")
+        self.ed_dmx_values.setFixedHeight(56)
+        self.ed_dmx_values.setToolTip(
+            "DMX values as channel:value pairs, comma-separated. Channels "
+            "1..512, values 0..255. Used for snapshot and fade modes."
+        )
+        dl.addRow("Values", self.ed_dmx_values)
+
+        self.sp_dmx_fade = self._spin_seconds(max_val=600.0)
+        self.sp_dmx_fade.setToolTip(
+            "Fade duration in seconds. Only applied in Fade mode."
+        )
+        dl.addRow("Fade time (s)", self.sp_dmx_fade)
+
+        self.ed_dmx_chase = QPlainTextEdit()
+        self.ed_dmx_chase.setPlaceholderText("1:255 | 1:0,17:255 | 17:0")
+        self.ed_dmx_chase.setFixedHeight(70)
+        self.ed_dmx_chase.setToolTip(
+            "Chase steps separated by ' | '. Each step is a channel:value "
+            "list like in Values. Used in Chase mode."
+        )
+        dl.addRow("Chase steps", self.ed_dmx_chase)
+
+        self.sp_dmx_step = self._spin_seconds(max_val=600.0)
+        self.sp_dmx_step.setToolTip("Time per chase step (seconds).")
+        dl.addRow("Step time (s)", self.sp_dmx_step)
+
+        self.sp_dmx_chase_loops = QSpinBox()
+        self.sp_dmx_chase_loops.setRange(0, 9999)
+        self.sp_dmx_chase_loops.setSpecialValueText("∞")
+        self.sp_dmx_chase_loops.setToolTip(
+            "How many times to repeat the chase. 0 = loop indefinitely "
+            "(stop with a Stop cue)."
+        )
+        dl.addRow("Chase loops (0 = ∞)", self.sp_dmx_chase_loops)
+
+        self.chk_dmx_pingpong = QCheckBox("Ping-pong chase")
+        self.chk_dmx_pingpong.setToolTip(
+            "On = chase reverses at the end of each loop "
+            "(1→2→3→2→1→2→…). Off = wraps to the first step."
+        )
+        dl.addRow("", self.chk_dmx_pingpong)
+
+        lay.addWidget(self.grp_dmx)
+
         # ---- Wait ----------------------------------------------------------
         self.grp_wait = QGroupBox(t("group.wait"))
         wl = QFormLayout(self.grp_wait)
@@ -624,12 +726,26 @@ class InspectorWidget(QWidget):
             self.ed_net_host:       ("network_host",        lambda: self.ed_net_host.text()),
             self.sp_net_port:       ("network_port",        lambda: self.sp_net_port.value()),
             self.ed_net_args:       ("network_args",        lambda: self.ed_net_args.text()),
+            # DMX (Art-Net + sACN)
+            self.cb_dmx_protocol:   ("dmx_protocol",        lambda: self.cb_dmx_protocol.currentData()),
+            self.sp_dmx_universe:   ("dmx_universe",        lambda: self.sp_dmx_universe.value()),
+            self.ed_dmx_host:       ("dmx_host",            lambda: self.ed_dmx_host.text().strip()),
+            self.sp_dmx_port:       ("dmx_port",            lambda: self.sp_dmx_port.value()),
+            self.cb_dmx_mode:       ("dmx_mode",            lambda: self.cb_dmx_mode.currentData()),
+            self.ed_dmx_values:     ("dmx_values",          lambda: self.ed_dmx_values.toPlainText()),
+            self.sp_dmx_fade:       ("dmx_fade_time",       lambda: self.sp_dmx_fade.value()),
+            self.ed_dmx_chase:      ("dmx_chase_steps",     lambda: self.ed_dmx_chase.toPlainText()),
+            self.sp_dmx_step:       ("dmx_step_time",       lambda: self.sp_dmx_step.value()),
+            self.sp_dmx_chase_loops:("dmx_chase_loops",     lambda: self.sp_dmx_chase_loops.value()),
+            self.chk_dmx_pingpong:  ("dmx_chase_pingpong",  lambda: self.chk_dmx_pingpong.isChecked()),
         }
 
         for w in (self.ed_number, self.ed_name, self.ed_path, self.ed_notes,
                   self.ed_trigger_osc, self.ed_video_path, self.ed_ppt_path,
                   self.ed_image_path,
-                  self.ed_net_address, self.ed_net_host, self.ed_net_args):
+                  self.ed_net_address, self.ed_net_host, self.ed_net_args,
+                  self.ed_dmx_host,
+                  self.ed_dmx_values, self.ed_dmx_chase):
             if isinstance(w, QPlainTextEdit):
                 w.textChanged.connect(self._on_any_change)
             else:
@@ -641,7 +757,9 @@ class InspectorWidget(QWidget):
                   self.sp_video_in, self.sp_video_out,
                   self.sp_video_volume, self.sp_ppt_slide,
                   self.sp_image_fade_in, self.sp_image_fade_out,
-                  self.sp_net_port):
+                  self.sp_net_port,
+                  self.sp_dmx_universe, self.sp_dmx_port, self.sp_dmx_fade,
+                  self.sp_dmx_step, self.sp_dmx_chase_loops):
             w.valueChanged.connect(self._on_any_change)
         self.sp_loops.valueChanged.connect(self._on_any_change)
         self.cb_type.currentIndexChanged.connect(self._on_type_change)
@@ -654,6 +772,11 @@ class InspectorWidget(QWidget):
         self.cb_ppt_action.currentIndexChanged.connect(self._update_ppt_visibility)
         self.chk_fade_stops.toggled.connect(self._on_any_change)
         self.chk_video_last_frame.toggled.connect(self._on_any_change)
+        self.cb_dmx_protocol.currentIndexChanged.connect(self._on_any_change)
+        self.cb_dmx_protocol.currentIndexChanged.connect(self._on_dmx_protocol_change)
+        self.cb_dmx_mode.currentIndexChanged.connect(self._on_any_change)
+        self.cb_dmx_mode.currentIndexChanged.connect(self._update_dmx_visibility)
+        self.chk_dmx_pingpong.toggled.connect(self._on_any_change)
 
         self.set_cues([])
 
@@ -709,6 +832,7 @@ class InspectorWidget(QWidget):
             self.grp_image.setVisible(False)
             self.grp_presentation.setVisible(False)
             self.grp_network.setVisible(False)
+            self.grp_dmx.setVisible(False)
             self.grp_wait.setVisible(False)
             self.grp_target.setVisible(False)
             self.content.setEnabled(False)
@@ -788,6 +912,27 @@ class InspectorWidget(QWidget):
         self.sp_net_port.setValue(cue.network_port if cue.network_port > 0 else 53000)
         self.ed_net_args.setText(cue.network_args if not multi else "")
 
+        # DMX-velden
+        idx_proto = self.cb_dmx_protocol.findData(cue.dmx_protocol or "artnet")
+        if idx_proto >= 0:
+            self.cb_dmx_protocol.setCurrentIndex(idx_proto)
+        self.sp_dmx_universe.setValue(int(cue.dmx_universe))
+        self.ed_dmx_host.setText(cue.dmx_host)
+        self.sp_dmx_port.setValue(
+            cue.dmx_port if cue.dmx_port > 0 else (
+                6454 if (cue.dmx_protocol or "artnet") == "artnet" else 5568
+            )
+        )
+        idx_mode = self.cb_dmx_mode.findData(cue.dmx_mode or "snapshot")
+        if idx_mode >= 0:
+            self.cb_dmx_mode.setCurrentIndex(idx_mode)
+        self.ed_dmx_values.setPlainText(cue.dmx_values if not multi else "")
+        self.sp_dmx_fade.setValue(float(cue.dmx_fade_time))
+        self.ed_dmx_chase.setPlainText(cue.dmx_chase_steps if not multi else "")
+        self.sp_dmx_step.setValue(float(cue.dmx_step_time))
+        self.sp_dmx_chase_loops.setValue(int(cue.dmx_chase_loops))
+        self.chk_dmx_pingpong.setChecked(bool(cue.dmx_chase_pingpong))
+
         # Thumbnail-preview alleen laden voor single-select VIDEO-cues.
         if not multi and cue.cue_type == CueType.VIDEO and cue.file_path:
             self.video_preview.load(
@@ -810,7 +955,8 @@ class InspectorWidget(QWidget):
                   self.ed_ppt_path, self.btn_browse_ppt, self.cb_ppt_action,
                   self.sp_ppt_slide,
                   self.ed_image_path, self.btn_browse_image,
-                  self.ed_net_address, self.ed_net_args, self.btn_net_send):
+                  self.ed_net_address, self.ed_net_args, self.btn_net_send,
+                  self.ed_dmx_values, self.ed_dmx_chase):
             w.setEnabled(not multi)
 
         self._updating = False
@@ -821,10 +967,40 @@ class InspectorWidget(QWidget):
         self.grp_image.setVisible(cue_type == CueType.IMAGE)
         self.grp_presentation.setVisible(cue_type == CueType.PRESENTATION)
         self.grp_network.setVisible(cue_type == CueType.NETWORK)
+        self.grp_dmx.setVisible(cue_type == CueType.DMX)
         self.grp_wait.setVisible(cue_type == CueType.WAIT)
         self.grp_target.setVisible(cue_type in (CueType.STOP, CueType.FADE, CueType.START))
         self._update_ppt_visibility()
+        self._update_dmx_visibility()
         self._refresh_pro_banner()
+
+    def _update_dmx_visibility(self) -> None:
+        """Toon alleen de velden die relevant zijn voor de gekozen DMX-mode:
+        snapshot → values + fade-time (fade-time wel zichtbaar maar
+        geadviseerd 0); fade → values + fade-time; chase → chase-steps +
+        step-time + loops + ping-pong."""
+        mode = self.cb_dmx_mode.currentData()
+        chase = (mode == "chase")
+        # row-index hangt van layout-volgorde af; we zetten gewoon de
+        # widgets visible/invisible — labels zijn aan widgets gekoppeld
+        # door QFormLayout.
+        form = self.grp_dmx.layout()
+        for w in (self.ed_dmx_values, self.sp_dmx_fade):
+            form.setRowVisible(w, not chase)
+        for w in (self.ed_dmx_chase, self.sp_dmx_step,
+                  self.sp_dmx_chase_loops, self.chk_dmx_pingpong):
+            form.setRowVisible(w, chase)
+
+    def _on_dmx_protocol_change(self) -> None:
+        """Wijzig de default-port als de operator van protocol wisselt
+        en het port-veld nog op de andere default staat. Voorkomt
+        verwarring zoals 'Art-Net op port 5568' wat niet werkt."""
+        proto = self.cb_dmx_protocol.currentData()
+        cur = self.sp_dmx_port.value()
+        if proto == "artnet" and cur == 5568:
+            self.sp_dmx_port.setValue(6454)
+        elif proto == "sacn" and cur == 6454:
+            self.sp_dmx_port.setValue(5568)
 
     def _refresh_pro_banner(self) -> None:
         """Toon de licentie-banner als de geselecteerde cue een Pro-type is

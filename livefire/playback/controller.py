@@ -14,7 +14,7 @@ from PyQt6.QtCore import QObject, QTimer, pyqtSignal
 
 from ..cues import Cue, CueType, ContinueMode, PresentationAction
 from ..engines import (
-    AudioEngine, ImageEngine, OscInputEngine, OscOutputEngine,
+    AudioEngine, DmxEngine, ImageEngine, OscInputEngine, OscOutputEngine,
     PowerPointEngine, VideoEngine,
 )
 from ..engines.osc_out import parse_args as parse_osc_args
@@ -68,6 +68,7 @@ class PlaybackController(QObject):
         powerpoint: PowerPointEngine | None = None,
         image: ImageEngine | None = None,
         osc_out: OscOutputEngine | None = None,
+        dmx: DmxEngine | None = None,
     ):
         super().__init__(parent)
         self.workspace = workspace
@@ -81,6 +82,8 @@ class PlaybackController(QObject):
         self.powerpoint = powerpoint if powerpoint is not None else PowerPointEngine(self)
         self.image = image if image is not None else ImageEngine(self)
         self.osc_out = osc_out if osc_out is not None else OscOutputEngine(self)
+        self.dmx = dmx if dmx is not None else DmxEngine(self)
+        self.dmx.start()
 
         self._running: dict[str, _Running] = {}
         self._playhead_index: int = 0
@@ -106,6 +109,7 @@ class PlaybackController(QObject):
         self.video.shutdown()
         self.image.shutdown()
         self.powerpoint.shutdown()
+        self.dmx.shutdown()
 
     # ---- transport ---------------------------------------------------------
 
@@ -241,6 +245,10 @@ class PlaybackController(QObject):
         # window over de cuelist hangen tot een Close-cue. Veilig om te
         # roepen ook als er geen presentatie open is.
         self.powerpoint.close()
+        # DMX-blackout op Stop All: alle universes naar 0 zodat lichten
+        # uitgaan bij paniek. Een lichttafel-style cue-stop laat
+        # waardes anders staan, wat tijdens een show fout kan voelen.
+        self.dmx.blackout()
 
     def stop_cue(self, cue_id: str) -> None:
         if cue_id in self._running:
@@ -248,6 +256,7 @@ class PlaybackController(QObject):
         self.audio.stop_cue(cue_id)
         self.video.stop_cue(cue_id)
         self.image.stop_cue(cue_id)
+        self.dmx.stop_cue(cue_id)
 
     # ---- cue-specifieke start-logica --------------------------------------
 
@@ -360,6 +369,36 @@ class PlaybackController(QObject):
                 self.network_send_failed.emit(cue.id, err)
             # Network-cues zijn instant: het verzenden gebeurt synchroon.
             r.action_duration = 0.0
+
+        elif t == CueType.DMX:
+            ok, err = self.dmx.play(cue)
+            if not ok:
+                # Net als bij Network: surface in de statusbar via de
+                # network_send_failed-signal (dezelfde UI-handler is
+                # bruikbaar — toont een transiente waarschuwing).
+                self.network_send_failed.emit(cue.id, f"DMX: {err}")
+                r.action_duration = 0.0
+            elif cue.dmx_mode == "fade":
+                r.action_duration = max(0.0, float(cue.dmx_fade_time))
+            elif cue.dmx_mode == "chase":
+                # Eindigt na chase_loops_total × step_time × steps; bij 0 →
+                # oneindig (cue blijft "running" tot Stop). Voor 0 zetten
+                # we duration op 0 zodat AUTO_FOLLOW direct doorpakt; de
+                # operator stopt 'm dan handmatig met een Stop-cue.
+                steps = max(1, len([s for s in cue.dmx_chase_steps.split("|") if s.strip()]))
+                if cue.dmx_chase_loops > 0:
+                    cycle = (
+                        2 * (steps - 1) if (cue.dmx_chase_pingpong and steps > 1)
+                        else steps
+                    )
+                    r.action_duration = (
+                        cue.dmx_chase_loops * cycle * cue.dmx_step_time
+                    )
+                else:
+                    r.action_duration = 0.0
+            else:
+                # snapshot — instant, blijft als state in de buffer staan.
+                r.action_duration = 0.0
 
         elif t == CueType.WAIT:
             r.action_duration = cue.wait_duration

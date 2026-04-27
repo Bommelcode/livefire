@@ -5,6 +5,36 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+DMX als nieuw cue-type — Art-Net + sACN (E1.31), drie modes (snapshot,
+fade, chase), pure-Python output zonder externe dep.
+
+### Toegevoegd
+- **DMX-cue** met velden voor protocol (Art-Net / sACN), universe,
+  target-host (leeg = broadcast/multicast), port, mode (snapshot / fade
+  / chase), values (`1:255, 17:128`), fade_time, chase-steps
+  (`1:255 | 1:0,17:255 | 17:0`), step_time, chase_loops (0 = ∞),
+  ping-pong-flag.
+- **`livefire/engines/dmx.py`** — `DmxEngine` met één 512-byte buffer
+  per `(protocol, universe)` en een daemon-thread die alles continu
+  pusht op de geconfigureerde refresh-rate (default 30 Hz, range
+  5..60 Hz). LTP-merge: latere cue overschrijft eerdere op dezelfde
+  channels. Fade interpoleert lineair in de sender-loop; chase
+  doorloopt z'n stappen en eindigt na `chase_loops` cycles, of looped
+  oneindig bij 0.
+- **Pure-Python packet-encoders** voor Art-Net (ArtDMX, OpCode 0x5000)
+  en sACN E1.31 — `struct` + raw UDP socket, geen externe dep.
+- **Inspector-groep** voor DMX met protocol-aware default-port (6454 ↔
+  5568), mode-aware visibility (values+fade vs chase-steps+step-time+
+  loops+pingpong).
+- **Cue-toolbar-glyph** voor DMX (5-fader-strip), cue-menu-entry
+  *New DMX Cue* (Ctrl+Shift+D).
+- **Engine-status registry** entry voor DMX met universe-count +
+  refresh-rate of laatste error.
+
+### Gewijzigd
+- **Stop All** zet alle DMX-universes op nul (blackout) — paniek-knop
+  neemt lichten mee.
+
 ## [0.4.2] — 2026-04-27
 
 Companion / Stream Deck-integratie, undo/redo + cut/copy/paste,

@@ -17,6 +17,7 @@ class CueType:
     IMAGE = "Image"
     PRESENTATION = "Presentation"
     NETWORK = "Network"
+    DMX = "DMX"
     GROUP = "Group"
     WAIT = "Wait"
     STOP = "Stop"
@@ -26,9 +27,9 @@ class CueType:
 
     # Toekomstige types (nog niet geïmplementeerd):
     # MIDI  = "MIDI"    -> v0.4.x
-    # DMX   = "DMX"     -> v0.5.0
 
-    ALL = [AUDIO, VIDEO, IMAGE, PRESENTATION, NETWORK, GROUP, WAIT, STOP, FADE, START, MEMO]
+    ALL = [AUDIO, VIDEO, IMAGE, PRESENTATION, NETWORK, DMX,
+           GROUP, WAIT, STOP, FADE, START, MEMO]
 
 
 class PresentationAction:
@@ -127,6 +128,30 @@ class Cue:
     network_args: str = ""
     network_host: str = "127.0.0.1"
     network_port: int = 53000
+
+    # DMX (Art-Net + sACN, v0.5.0)
+    # protocol  — "artnet" of "sacn"
+    # universe  — 0..32767 (Art-Net: subnet+net+universe, sACN: 1..63999 typisch)
+    # host      — IP of "" voor broadcast (Art-Net) / multicast (sACN, 239.255.x.y)
+    # port      — Art-Net default 6454, sACN E1.31 default 5568
+    # mode      — "snapshot" | "fade" | "chase"
+    # values    — vrij tekstveld "1:255, 17:128, 33:64" (channel:value)
+    # fade_time — secondes; 0 = harde cut, >0 = lineaire ramp
+    # chase_steps    — meerdere snapshots gescheiden door " | "
+    # step_time      — secondes per chase-step
+    # chase_loops    — 0 = oneindig, N = N keer doorlopen
+    # chase_pingpong — bij true loop heen-en-weer ipv wrap-around
+    dmx_protocol: str = "artnet"
+    dmx_universe: int = 0
+    dmx_host: str = ""
+    dmx_port: int = 6454
+    dmx_mode: str = "snapshot"
+    dmx_values: str = ""
+    dmx_fade_time: float = 0.0
+    dmx_chase_steps: str = ""
+    dmx_step_time: float = 0.5
+    dmx_chase_loops: int = 0
+    dmx_chase_pingpong: bool = False
 
     # Fade-target
     target_cue_id: str = ""    # voor Stop, Fade, Start
