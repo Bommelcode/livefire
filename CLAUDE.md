@@ -14,11 +14,11 @@ Cue-based audio / video / image / OSC / PowerPoint playback voor live shows.
 Moet draaiend te krijgen zijn op showlocaties zonder internet. Wordt mogelijk
 gedeeld met AV-collega's — eindtoestand is een Windows `.exe` installer.
 
-Huidige versie: **0.4.2** (Audio + Video + Image + Network/OSC-out +
-PowerPoint-import incl. timing-tree, OSC-in triggers, freemium-licensing-
-systeem aanwezig maar tijdelijk uitgezet via `LICENSING_ENABLED=False`,
-Companion / Stream Deck-integratie via een aparte module-repo, en
-undo/redo + cut/copy/paste voor cues).
+Huidige versie: **0.5.0** (Audio + Video + Image + Network/OSC-out +
+DMX/Art-Net+sACN + PowerPoint-import incl. timing-tree, OSC-in triggers,
+freemium-licensing-systeem aanwezig maar tijdelijk uitgezet via
+`LICENSING_ENABLED=False`, Companion / Stream Deck-integratie via een
+aparte module-repo, en undo/redo + cut/copy/paste voor cues).
 
 ## Tech stack
 
@@ -37,14 +37,17 @@ undo/redo + cut/copy/paste voor cues).
   `.pptx`-archief voor slide-count, embedded media, en het timing-tree
   (autoplay/click/loop/volume) zonder PowerPoint te starten.
 - **MIDI** (gepland, nog niet aanwezig): `mido` + `python-rtmidi` (in + out).
-- **DMX** (gepland v0.5.x): `pyartnet` (Art-Net), `sacn` (sACN E1.31).
+- **DMX**: pure-Python Art-Net + sACN (E1.31). Geen externe dep — we
+  encoderen de packets zelf met `struct` + raw UDP socket. DmxEngine
+  houdt per universe een 512-byte buffer aan en pusht 'm continu op
+  ~30 Hz; cues schrijven via LTP-merge.
 - **Licensing**: lokale HMAC-SHA256 keys (`livefire/licensing.py`). Module
   is volledig geïmplementeerd maar door `LICENSING_ENABLED = False` staan
   alle Pro-features open en is het Help → Licentie…-menu verborgen.
 - **Packaging** (gepland v1.0.0): PyInstaller + Inno Setup.
 - **Tests**: `pytest` (~100 tests), geen CI-verplichting (nog).
 
-## Projectstructuur (v0.4.2)
+## Projectstructuur (v0.5.0)
 
 ```
 livefire/
@@ -135,7 +138,7 @@ livefire/
 
 ## Roadmap
 
-Gedaan (v0.3.0 t/m v0.4.2):
+Gedaan (v0.3.0 t/m v0.5.0):
 - v0.3.0 — Refactor single-file → modules, sounddevice master-mixer.
 - v0.3.1/v0.3.2 — Output-device picker (QSettings), crossfades.
 - v0.4.0 — OSC-in (Companion/StreamDeck triggers) incl. learn-dialog,
@@ -153,10 +156,14 @@ Gedaan (v0.3.0 t/m v0.4.2):
   (Visual Studio-stijl font, witte vector-glyphs op de cue-toolbar,
   swatch-rij i.p.v. dropdown voor kleuren, inline Continue-dropdown,
   oranje radio-button-dots, sticky inspector aan de rechterrand).
+- v0.5.0 — DMX als nieuw cue-type via Art-Net + sACN (E1.31). Pure-
+  Python output zonder externe dep, drie modes (snapshot, fade,
+  chase). Stop-All blackt uit. 21 nieuwe tests.
 
 Nog te doen:
-1. **v0.4.x** — MIDI-in/out (`mido` + `python-rtmidi`).
-2. **v0.5.0** — DMX/Art-Net + sACN cue-types met preset + chase + fade.
+1. **v0.5.x** — MIDI-in/out (`mido` + `python-rtmidi`), echte
+   Group-cues met parent/child tracking, audio-matrix per cue.
+2. **v0.6.0** — NDI-out, Cart-cue UI, MTC/LTC timecode in/out.
 3. **v1.0.0** — Installer (.exe via PyInstaller + Inno Setup), docs,
    stabilisatieronde, eerste publieke release naar collega's.
 
