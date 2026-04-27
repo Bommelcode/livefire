@@ -5,6 +5,8 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-04-27
+
 DMX als nieuw cue-type — Art-Net + sACN (E1.31), drie modes (snapshot,
 fade, chase), pure-Python output zonder externe dep.
 
