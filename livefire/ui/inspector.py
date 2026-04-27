@@ -19,7 +19,7 @@ from ..cues import Cue, CueType, ContinueMode, PresentationAction
 from ..i18n import t
 from ..engines.video import list_screens
 from ..workspace import Workspace
-from .style import CUE_COLORS
+from .style import CUE_COLORS, TEXT_DIM
 from .video_preview import VideoPreviewWidget
 
 
@@ -625,6 +625,27 @@ class InspectorWidget(QWidget):
         wl.addRow("Wait duration (s)", self.sp_wait)
         lay.addWidget(self.grp_wait)
 
+        # ---- Group --------------------------------------------------------
+        self.grp_group = QGroupBox(t("group.group"))
+        gl = QFormLayout(self.grp_group)
+        self.cb_group_mode = QComboBox()
+        self.cb_group_mode.addItem("List — step through manually", "list")
+        self.cb_group_mode.addItem("First, then list — auto-chain children", "first-then-list")
+        self.cb_group_mode.addItem("Parallel — fire all children at once", "parallel")
+        self.cb_group_mode.addItem("Random — fire one random child", "random")
+        self.cb_group_mode.setToolTip(
+            "How this group behaves when GO'd:\n"
+            "• List — playhead enters the group; you GO through children manually\n"
+            "• First, then list — fires the first child, then auto-chains the rest\n"
+            "• Parallel — fires all children at the same time\n"
+            "• Random — fires one randomly picked child"
+        )
+        gl.addRow("Mode", self.cb_group_mode)
+        self.lbl_group_children = QLabel()
+        self.lbl_group_children.setStyleSheet(f"color: {TEXT_DIM};")
+        gl.addRow("Children", self.lbl_group_children)
+        lay.addWidget(self.grp_group)
+
         # ---- Target (Stop / Fade / Start) ---------------------------------
         self.grp_target = QGroupBox(t("group.target"))
         tl = QFormLayout(self.grp_target)
@@ -726,6 +747,8 @@ class InspectorWidget(QWidget):
             self.ed_net_host:       ("network_host",        lambda: self.ed_net_host.text()),
             self.sp_net_port:       ("network_port",        lambda: self.sp_net_port.value()),
             self.ed_net_args:       ("network_args",        lambda: self.ed_net_args.text()),
+            # Group
+            self.cb_group_mode:     ("group_mode",          lambda: self.cb_group_mode.currentData()),
             # DMX (Art-Net + sACN)
             self.cb_dmx_protocol:   ("dmx_protocol",        lambda: self.cb_dmx_protocol.currentData()),
             self.sp_dmx_universe:   ("dmx_universe",        lambda: self.sp_dmx_universe.value()),
@@ -772,6 +795,7 @@ class InspectorWidget(QWidget):
         self.cb_ppt_action.currentIndexChanged.connect(self._update_ppt_visibility)
         self.chk_fade_stops.toggled.connect(self._on_any_change)
         self.chk_video_last_frame.toggled.connect(self._on_any_change)
+        self.cb_group_mode.currentIndexChanged.connect(self._on_any_change)
         self.cb_dmx_protocol.currentIndexChanged.connect(self._on_any_change)
         self.cb_dmx_protocol.currentIndexChanged.connect(self._on_dmx_protocol_change)
         self.cb_dmx_mode.currentIndexChanged.connect(self._on_any_change)
@@ -834,6 +858,7 @@ class InspectorWidget(QWidget):
             self.grp_network.setVisible(False)
             self.grp_dmx.setVisible(False)
             self.grp_wait.setVisible(False)
+            self.grp_group.setVisible(False)
             self.grp_target.setVisible(False)
             self.content.setEnabled(False)
             self._updating = False
@@ -933,6 +958,20 @@ class InspectorWidget(QWidget):
         self.sp_dmx_chase_loops.setValue(int(cue.dmx_chase_loops))
         self.chk_dmx_pingpong.setChecked(bool(cue.dmx_chase_pingpong))
 
+        # Group-velden
+        idx_gmode = self.cb_group_mode.findData(cue.group_mode or "list")
+        if idx_gmode >= 0:
+            self.cb_group_mode.setCurrentIndex(idx_gmode)
+        if cue.cue_type == CueType.GROUP:
+            children = self.workspace.children_of(cue.id)
+            descendants = self.workspace.descendants_of(cue.id)
+            if descendants:
+                self.lbl_group_children.setText(
+                    f"{len(children)} direct ({len(descendants)} total)"
+                )
+            else:
+                self.lbl_group_children.setText("(none — drag cues in or use right-click)")
+
         # Thumbnail-preview alleen laden voor single-select VIDEO-cues.
         if not multi and cue.cue_type == CueType.VIDEO and cue.file_path:
             self.video_preview.load(
@@ -969,6 +1008,7 @@ class InspectorWidget(QWidget):
         self.grp_network.setVisible(cue_type == CueType.NETWORK)
         self.grp_dmx.setVisible(cue_type == CueType.DMX)
         self.grp_wait.setVisible(cue_type == CueType.WAIT)
+        self.grp_group.setVisible(cue_type == CueType.GROUP)
         self.grp_target.setVisible(cue_type in (CueType.STOP, CueType.FADE, CueType.START))
         self._update_ppt_visibility()
         self._update_dmx_visibility()

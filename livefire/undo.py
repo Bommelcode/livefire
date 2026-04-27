@@ -152,6 +152,101 @@ class RenumberCmd(QUndoCommand):
 # ---- veld-mutatie ---------------------------------------------------------
 
 
+class ReparentCuesCmd(QUndoCommand):
+    """Verplaats een set cues naar een andere parent_group_id, en zet ze
+    direct na de target-group (of aan het einde van de cuelist als de
+    target leeg is). Snapshot bewaart oude parent + index per cue zodat
+    undo netjes alles terugzet.
+
+    Wordt gebruikt door cuelist's "Move into group" / "Move out of group"
+    context-menu en door drag-drop bij het verplaatsen van children
+    in/uit een group.
+    """
+
+    def __init__(
+        self,
+        ws: Workspace,
+        cue_ids: Iterable[str],
+        new_parent_id: str,
+        hook: RefreshHook,
+    ):
+        ids = list(cue_ids)
+        super().__init__(
+            f"Move {len(ids)} cue(s) into group" if new_parent_id else
+            f"Move {len(ids)} cue(s) out of group"
+        )
+        self.ws = ws
+        self.cue_ids = ids
+        self.new_parent_id = new_parent_id
+        self.hook = hook
+        # Snapshot oude parent + positie van iedere cue
+        self._old_state: list[tuple[str, str, int]] = []
+        for cid in ids:
+            cue = ws.find(cid)
+            if cue is None:
+                continue
+            self._old_state.append(
+                (cid, cue.parent_group_id, ws.index_of(cid))
+            )
+
+    def redo(self) -> None:
+        # Werk in volgorde van huidige index zodat verplaatsing stabiel is.
+        ids_sorted = sorted(self.cue_ids, key=lambda c: self.ws.index_of(c))
+        for cid in ids_sorted:
+            cue = self.ws.find(cid)
+            if cue is None:
+                continue
+            cue.parent_group_id = self.new_parent_id
+            # Plaats de cue direct ná het einde van de target-group, of
+            # aan het einde van de cuelist als top-level.
+            self._move_to_logical_position(cid)
+        self.ws.dirty = True
+        self.hook.on_struct()
+
+    def undo(self) -> None:
+        # Iterate in reverse zodat we de snapshot-volgorde herstellen.
+        for cid, old_parent, old_idx in reversed(self._old_state):
+            cue = self.ws.find(cid)
+            if cue is None:
+                continue
+            cue.parent_group_id = old_parent
+            cur = self.ws.index_of(cid)
+            if cur < 0:
+                continue
+            target = max(0, min(old_idx, len(self.ws.cues) - 1))
+            popped = self.ws.cues.pop(cur)
+            self.ws.cues.insert(target, popped)
+        self.ws.dirty = True
+        self.hook.on_struct()
+
+    def _move_to_logical_position(self, cue_id: str) -> None:
+        """Verplaats cue_id zodat 'ie direct na de parent-group + diens
+        bestaande descendants komt. Houdt de cuelist-volgorde consistent
+        met de tree-rendering."""
+        if not self.new_parent_id:
+            # Move-out: zet aan het einde van de cuelist. Eenvoudigste
+            # invariant; alternatief is "direct na de oorspronkelijke
+            # parent-group" maar dat botst als meerdere cues uit
+            # verschillende groups tegelijk eruit gaan.
+            cur = self.ws.index_of(cue_id)
+            if cur < 0:
+                return
+            popped = self.ws.cues.pop(cur)
+            self.ws.cues.append(popped)
+            return
+        # Insert positie = direct na de laatste descendant van de target-
+        # group, of direct na de target-group zelf als die nog leeg is.
+        target_end = self.ws.first_index_after_group(self.new_parent_id)
+        cur = self.ws.index_of(cue_id)
+        if cur < 0:
+            return
+        popped = self.ws.cues.pop(cur)
+        # Na de pop kan target_end één positie zijn opgeschoven.
+        if cur < target_end:
+            target_end -= 1
+        self.ws.cues.insert(target_end, popped)
+
+
 class SetCueFieldCmd(QUndoCommand):
     """Wijzig één veld op één of meerdere cues.
 

@@ -34,6 +34,11 @@ class _Running:
     phase_started_at: float = 0.0
     action_duration: float = 0.0   # berekend op moment van action-start
     stop_triggered: bool = False   # voor audio: fade-out al ingezet?
+    # True wanneer deze cue als child van een first-then-list-group
+    # gevuurd is. In dat geval triggert z'n eigen continue_mode niet
+    # _advance_and_go (de globale playhead is al voorbij de group),
+    # maar wordt de chain gedraaid door _advance_group_chain.
+    in_group_chain: bool = False
 
 
 class PlaybackController(QObject):
@@ -87,6 +92,12 @@ class PlaybackController(QObject):
 
         self._running: dict[str, _Running] = {}
         self._playhead_index: int = 0
+        # Group-chain bookkeeping voor first-then-list-mode: per group-id
+        # een lijst van nog-te-vuren children, en een reverse-lookup
+        # (child-id → group-id) zodat _stop_running de keten kan
+        # doorzetten zodra een child klaar is.
+        self._group_chain: dict[str, list[Cue]] = {}
+        self._group_chain_owner: dict[str, str] = {}
 
         self._timer = QTimer(self)
         self._timer.setInterval(TICK_MS)
@@ -237,6 +248,12 @@ class PlaybackController(QObject):
         ids = list(self._running.keys())
         for cid in ids:
             self._stop_running(cid, finished=False)
+        # Reset group-chain bookkeeping zodat een eventuele lopende
+        # first-then-list niet ineens herstart als een nieuwe Group-cue
+        # straks dezelfde id krijgt (zou niet gebeuren met UUIDs maar
+        # explicit > implicit).
+        self._group_chain.clear()
+        self._group_chain_owner.clear()
         self.audio.stop_all()
         self.video.stop_all()
         self.image.stop_all()
@@ -251,6 +268,15 @@ class PlaybackController(QObject):
         self.dmx.blackout()
 
     def stop_cue(self, cue_id: str) -> None:
+        # Group-cue → cascade naar alle nakomelingen (recursief). Doe
+        # dat eerst zodat de chain-keten netjes leeg is voordat we de
+        # group zelf stoppen.
+        cue = self.workspace.find(cue_id)
+        if cue is not None and cue.cue_type == CueType.GROUP:
+            self._group_chain.pop(cue_id, None)
+            for descendant in self.workspace.descendants_of(cue_id):
+                self._group_chain_owner.pop(descendant.id, None)
+                self.stop_cue(descendant.id)  # recursief — neemt nested groups mee
         if cue_id in self._running:
             self._stop_running(cue_id, finished=False)
         self.audio.stop_cue(cue_id)
@@ -260,10 +286,11 @@ class PlaybackController(QObject):
 
     # ---- cue-specifieke start-logica --------------------------------------
 
-    def _start_cue(self, cue: Cue) -> None:
+    def _start_cue(self, cue: Cue, in_group_chain: bool = False) -> None:
         now = time.monotonic()
         running = _Running(cue=cue, started_at=now, phase="pre_wait",
-                           phase_started_at=now)
+                           phase_started_at=now,
+                           in_group_chain=in_group_chain)
         self._running[cue.id] = running
         cue.state = "running"
         self.cue_state_changed.emit(cue.id)
@@ -283,8 +310,9 @@ class PlaybackController(QObject):
             self.cue_blocked_by_license.emit(cue.id, cue.cue_type)
             r.action_duration = 0.0
             # AUTO_CONTINUE moet ook nog werken zodat een blokkade niet
-            # de hele chain breekt.
-            if cue.continue_mode == ContinueMode.AUTO_CONTINUE:
+            # de hele chain breekt — behalve voor children van een
+            # first-then-list-group; daar regelt _advance_group_chain.
+            if cue.continue_mode == ContinueMode.AUTO_CONTINUE and not in_group_chain:
                 self._advance_and_go()
             return
 
@@ -430,12 +458,7 @@ class PlaybackController(QObject):
             r.action_duration = 0.0
 
         elif t == CueType.GROUP:
-            # Skeleton: group speelt alle kindcues parallel (list-mode).
-            # v0.3.x kan dit uitbouwen naar first-then-list e.d.
-            # In deze skeleton-versie zijn groepen placeholders: we markeren
-            # ze als meteen 'klaar'. Echte groep-semantiek komt terug zodra
-            # de UI parent/child relaties netjes kan opslaan.
-            r.action_duration = 0.0
+            r.action_duration = self._fire_group(cue)
 
         elif t == CueType.MEMO:
             r.action_duration = 0.0
@@ -460,8 +483,12 @@ class PlaybackController(QObject):
                         volume_db=nxt.volume_db,
                     )
 
-        # Auto-continue: volgende cue start wanneer de actie start
-        if cue.continue_mode == ContinueMode.AUTO_CONTINUE:
+        # Auto-continue: volgende cue start wanneer de actie start.
+        # Onderdrukt voor children van een first-then-list-group: hun
+        # eigen continue_mode mag de globale playhead niet doorduwen
+        # voorbij de group, want de group heeft de playhead al na zichzelf
+        # geplaatst en wij chaiñen de children intern via _group_chain.
+        if cue.continue_mode == ContinueMode.AUTO_CONTINUE and not in_group_chain:
             self._advance_and_go()
 
     def _advance_and_go(self) -> None:
@@ -472,6 +499,93 @@ class PlaybackController(QObject):
         self._playhead_index += 1
         self._start_cue(nxt)
 
+    # ---- group-cue afhandeling --------------------------------------------
+
+    def _fire_group(self, cue: Cue) -> float:
+        """Vuur een Group-cue af volgens z'n group_mode.
+
+        Returns de ``action_duration`` voor de _Running entry — typisch 0
+        omdat de child-cues hun eigen lifecycle hebben.
+
+        * ``list``            — playhead stapt naar de eerste child zonder
+                                te vuren. Operator GO't de children
+                                handmatig één voor één.
+        * ``first-then-list`` — vuurt children sequentieel; iedere child
+                                krijgt impliciet AUTO_CONTINUE-gedrag tot
+                                de laatste. Playhead skipt voorbij de
+                                hele group-block.
+        * ``parallel``        — vuurt alle children tegelijk; playhead
+                                skipt voorbij de group-block.
+        * ``random``          — vuurt één willekeurige child; playhead
+                                skipt voorbij de group-block.
+        """
+        children = self.workspace.children_of(cue.id)
+        if not children:
+            return 0.0
+
+        mode = cue.group_mode or "list"
+
+        if mode == "list":
+            # Zet playhead op de eerste child zonder hem te vuren. Het
+            # standaard tick-pad voor AUTO_CONTINUE / AUTO_FOLLOW raakt
+            # de group zelf niet (we hebben r.action_duration = 0 +
+            # geen audio engine = direct in post_wait), dus de playhead
+            # wijst nu naar de eerste child en de operator kan z'n
+            # volgende GO doen.
+            first = children[0]
+            child_idx = self.workspace.index_of(first.id)
+            if child_idx >= 0:
+                self.set_playhead(child_idx)
+            return 0.0
+
+        # Voor de niet-list-modes: playhead skipt voorbij de group + alle
+        # nakomelingen, anders zou de volgende GO een child opnieuw
+        # afvuren die we al van plan waren te firen.
+        end_idx = self.workspace.first_index_after_group(cue.id)
+        self.set_playhead(end_idx)
+
+        if mode == "parallel":
+            for child in children:
+                self._start_cue(child)
+            return 0.0
+
+        if mode == "random":
+            import random
+            choice = random.choice(children)
+            self._start_cue(choice)
+            return 0.0
+
+        # mode == "first-then-list" — sequentieel. We registreren een
+        # auto-chain-marker op de _Running van het eerste child zodat
+        # _stop_running 't volgende child kan starten zodra de huidige
+        # klaar is. Dit werkt door iedere child impliciet als AUTO_FOLLOW
+        # te behandelen via het _group_chain-state.
+        self._group_chain[cue.id] = list(children)
+        first = children[0]
+        self._group_chain_owner[first.id] = cue.id
+        # in_group_chain=True onderdrukt de eigen continue_mode van het
+        # child zodat 't niet dubbel de globale playhead doorduwt.
+        self._start_cue(first, in_group_chain=True)
+        return 0.0
+
+    def _advance_group_chain(self, finished_child_id: str) -> None:
+        """Wordt door _stop_running aangeroepen wanneer een child uit een
+        first-then-list-group klaar is. Vuur het volgende child."""
+        group_id = self._group_chain_owner.pop(finished_child_id, None)
+        if group_id is None:
+            return
+        chain = self._group_chain.get(group_id)
+        if not chain:
+            return
+        # Verwijder finished child uit de keten.
+        chain[:] = [c for c in chain if c.id != finished_child_id]
+        if not chain:
+            self._group_chain.pop(group_id, None)
+            return
+        nxt = chain[0]
+        self._group_chain_owner[nxt.id] = group_id
+        self._start_cue(nxt, in_group_chain=True)
+
     def _stop_running(self, cue_id: str, finished: bool) -> None:
         r = self._running.pop(cue_id, None)
         if r is None:
@@ -479,6 +593,12 @@ class PlaybackController(QObject):
         r.cue.state = "finished" if finished else "idle"
         self.cue_state_changed.emit(r.cue.id)
         self.running_changed.emit()
+        # Als deze cue onderdeel was van een first-then-list-chain, vuur
+        # de volgende child af. Doe dit alleen bij ``finished`` — een
+        # handmatige stop midden in een group hoort niet de rest van de
+        # chain alsnog te triggeren.
+        if finished and cue_id in self._group_chain_owner:
+            self._advance_group_chain(cue_id)
 
     # ---- tick --------------------------------------------------------------
 
@@ -512,7 +632,7 @@ class PlaybackController(QObject):
                         # AUTO_FOLLOW moet hier al triggeren zodat de volgende
                         # cue start terwijl deze uitfadet — dat geeft de
                         # gewenste crossfade.
-                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW and not r.in_group_chain:
                             to_advance.append(cid)
                         if r.cue.audio_fade_out <= 0:
                             finished = True
@@ -534,7 +654,7 @@ class PlaybackController(QObject):
                     if main_done and not r.stop_triggered:
                         self.video.stop_cue(r.cue.id, fade_out=r.cue.video_fade_out)
                         r.stop_triggered = True
-                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW and not r.in_group_chain:
                             to_advance.append(cid)
                         if r.cue.video_fade_out <= 0:
                             finished = True
@@ -551,7 +671,7 @@ class PlaybackController(QObject):
                     if not self.powerpoint.is_slideshow_active():
                         finished = True
                         self.powerpoint.close()
-                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW and not r.in_group_chain:
                             to_advance.append(cid)
                 elif r.cue.cue_type == CueType.IMAGE:
                     # duration > 0: net als video — wacht op de duration en
@@ -564,7 +684,7 @@ class PlaybackController(QObject):
                         if elapsed_phase >= r.action_duration and not r.stop_triggered:
                             self.image.stop_cue(r.cue.id, fade_out=r.cue.image_fade_out)
                             r.stop_triggered = True
-                            if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                            if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW and not r.in_group_chain:
                                 to_advance.append(cid)
                             if r.cue.image_fade_out <= 0:
                                 finished = True
@@ -574,13 +694,13 @@ class PlaybackController(QObject):
                     else:
                         if elapsed_phase >= r.action_duration:
                             finished = True
-                            if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                            if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW and not r.in_group_chain:
                                 to_advance.append(cid)
                 else:
                     if elapsed_phase >= r.action_duration:
                         finished = True
                         # Niet-audio/video: AUTO_FOLLOW triggert hier.
-                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW:
+                        if r.cue.continue_mode == ContinueMode.AUTO_FOLLOW and not r.in_group_chain:
                             to_advance.append(cid)
 
                 if finished:
