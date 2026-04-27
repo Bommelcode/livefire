@@ -14,11 +14,12 @@ Cue-based audio / video / image / OSC / PowerPoint playback voor live shows.
 Moet draaiend te krijgen zijn op showlocaties zonder internet. Wordt mogelijk
 gedeeld met AV-collega's — eindtoestand is een Windows `.exe` installer.
 
-Huidige versie: **0.5.0** (Audio + Video + Image + Network/OSC-out +
+Huidige versie: **0.5.1** (Audio + Video + Image + Network/OSC-out +
 DMX/Art-Net+sACN + PowerPoint-import incl. timing-tree, OSC-in triggers,
 freemium-licensing-systeem aanwezig maar tijdelijk uitgezet via
 `LICENSING_ENABLED=False`, Companion / Stream Deck-integratie via een
-aparte module-repo, en undo/redo + cut/copy/paste voor cues).
+aparte module-repo, undo/redo + cut/copy/paste voor cues, en echte
+group-cues met 4 fire-modes en parent/child nesting).
 
 ## Tech stack
 
@@ -47,7 +48,7 @@ aparte module-repo, en undo/redo + cut/copy/paste voor cues).
 - **Packaging** (gepland v1.0.0): PyInstaller + Inno Setup.
 - **Tests**: `pytest` (~100 tests), geen CI-verplichting (nog).
 
-## Projectstructuur (v0.5.0)
+## Projectstructuur (v0.5.1)
 
 ```
 livefire/
@@ -138,7 +139,7 @@ livefire/
 
 ## Roadmap
 
-Gedaan (v0.3.0 t/m v0.5.0):
+Gedaan (v0.3.0 t/m v0.5.1):
 - v0.3.0 — Refactor single-file → modules, sounddevice master-mixer.
 - v0.3.1/v0.3.2 — Output-device picker (QSettings), crossfades.
 - v0.4.0 — OSC-in (Companion/StreamDeck triggers) incl. learn-dialog,
@@ -159,10 +160,14 @@ Gedaan (v0.3.0 t/m v0.5.0):
 - v0.5.0 — DMX als nieuw cue-type via Art-Net + sACN (E1.31). Pure-
   Python output zonder externe dep, drie modes (snapshot, fade,
   chase). Stop-All blackt uit. 21 nieuwe tests.
+- v0.5.1 — Echte group-cues met parent/child-tracking en vier
+  fire-modes (list / first-then-list / parallel / random), recursive
+  stop-cascade, cuelist als boom met disclosure-arrows + right-click
+  context-menu voor "Move into group" / "Move out of group".
 
 Nog te doen:
-1. **v0.5.x** — MIDI-in/out (`mido` + `python-rtmidi`), echte
-   Group-cues met parent/child tracking, audio-matrix per cue.
+1. **v0.5.x** — MIDI-in/out (`mido` + `python-rtmidi`), audio-matrix
+   per cue (multi-output routing).
 2. **v0.6.0** — NDI-out, Cart-cue UI, MTC/LTC timecode in/out.
 3. **v1.0.0** — Installer (.exe via PyInstaller + Inno Setup), docs,
    stabilisatieronde, eerste publieke release naar collega's.
