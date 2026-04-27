@@ -75,12 +75,14 @@ Companion): periodiek (default 100 ms) `/livefire/playhead`,
 `/livefire/cuecount`. Companion's variables-systeem leest dit direct in
 zodat `$(livefire:remaining_formatted)` op een Stream Deck-knop terugtelt.
 
-**Companion-module** in [`companion-module/companion-module-livefire/`](companion-module/companion-module-livefire/):
-TypeScript Node.js-project met `@companion-module/base`, kant-en-klare
+**Companion-module** als losse repo:
+[**Bommelcode/companion-module-livefire**](https://github.com/Bommelcode/companion-module-livefire)
+— TypeScript Node.js-project met `@companion-module/base`, kant-en-klare
 **presets** voor GO / Stop All / Playhead next/prev / remaining-time tile /
 quick-fire 1..16 die oplichten zodra hun cue running is. Build met
 `yarn install && yarn build` en wijs Companion's *Settings → Developer
-modules* naar de map.
+modules* naar de gekloonde map. Volledige OSC-contract-tabel staat in
+de README van die repo.
 
 ### UI
 - Dark theme met cue-list, inspector, transport bar.

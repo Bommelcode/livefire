@@ -13,12 +13,6 @@ env/
 # Local Claude Code state — not project state
 .claude/
 
-# Companion-module Node artefacten
-companion-module/companion-module-livefire/node_modules/
-companion-module/companion-module-livefire/dist/
-companion-module/companion-module-livefire/yarn-error.log
-companion-module/companion-module-livefire/.npmrc
-
 # IDE / editor
 .vscode/
 .idea/
