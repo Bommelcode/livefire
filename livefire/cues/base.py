@@ -162,7 +162,21 @@ class Cue:
     wait_duration: float = 1.0
 
     # Groepsgedrag
-    group_mode: str = "list"   # "list" | "first-then-list"
+    # group_mode (alleen relevant voor cue_type == GROUP):
+    #   "list"            — playhead stapt in de group; operator GO't door
+    #                       de children handmatig. Children zijn losse cues
+    #                       die op zichzelf reageren op hun continue_mode.
+    #   "first-then-list" — alle children worden achter elkaar afgevuurd
+    #                       door de controller, ongeacht hun continue_mode.
+    #                       AUTO-chain zonder operator-input.
+    #   "parallel"        — alle children tegelijk bij GO van de group.
+    #   "random"          — één willekeurig child wordt afgevuurd.
+    group_mode: str = "list"
+    # Parent-group voor cue-nesting. Lege string = top-level. Pointer-pattern
+    # ipv recursive structure zodat de Workspace een platte lijst blijft —
+    # houdt JSON-format simpel en undo-commands stabiel. Cuelist en
+    # controller walken via deze pointers.
+    parent_group_id: str = ""
 
     # Triggers (v0.4.0)
     trigger_osc: str = ""      # OSC-address dat deze cue afvuurt, bv. /livefire/go/intro

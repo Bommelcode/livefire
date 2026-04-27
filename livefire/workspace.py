@@ -63,6 +63,56 @@ class Workspace:
             n += step
         self.dirty = True
 
+    # ---- groep-tree-helpers -----------------------------------------------
+
+    def children_of(self, group_id: str) -> list[Cue]:
+        """Directe children van een group (één niveau diep)."""
+        return [c for c in self.cues if c.parent_group_id == group_id]
+
+    def descendants_of(self, group_id: str) -> list[Cue]:
+        """Alle nakomelingen van een group, inclusief children-van-children
+        (genest). Gebruikt voor stop-cascade en voor het bepalen van
+        'het einde van een group' bij playhead-advance."""
+        result: list[Cue] = []
+        stack = [group_id]
+        # We walken breadth-first zodat de output-volgorde overeenkomt
+        # met de cuelist-volgorde (children komen direct na hun parent).
+        while stack:
+            gid = stack.pop(0)
+            for c in self.cues:
+                if c.parent_group_id == gid:
+                    result.append(c)
+                    if c.cue_type == CueType.GROUP:
+                        stack.append(c.id)
+        return result
+
+    def is_in_group(self, cue_id: str, group_id: str) -> bool:
+        """True als cue_id ergens onder group_id valt (recursief)."""
+        cue = self.find(cue_id)
+        while cue is not None and cue.parent_group_id:
+            if cue.parent_group_id == group_id:
+                return True
+            cue = self.find(cue.parent_group_id)
+        return False
+
+    def first_index_after_group(self, group_id: str) -> int:
+        """Index van de eerste cue ná een complete group-block, oftewel
+        de eerste cue die noch de group zelf is, noch een nakomeling.
+        Retourneert ``len(self.cues)`` als de group aan het einde staat
+        (= playhead landt voorbij het einde van de cuelist)."""
+        descendant_ids = {c.id for c in self.descendants_of(group_id)}
+        descendant_ids.add(group_id)
+        # Zoek de group zelf, dan stap door totdat we een cue zien die
+        # niet in de descendant-set zit. Dit werkt omdat de cuelist
+        # children direct na hun parent rendert (zie cuelist.refresh).
+        idx = self.index_of(group_id)
+        if idx < 0:
+            return len(self.cues)
+        i = idx + 1
+        while i < len(self.cues) and self.cues[i].id in descendant_ids:
+            i += 1
+        return i
+
     # ---- serialisatie ------------------------------------------------------
 
     def to_dict(self) -> dict:

@@ -53,7 +53,8 @@ from ..engines.powerpoint import (
 )
 from .. import licensing as licensing_mod
 from ..undo import (
-    RefreshHook, AddCueCmd, RemoveCuesCmd, MoveCueCmd, RenumberCmd, SetCueFieldCmd,
+    RefreshHook, AddCueCmd, RemoveCuesCmd, MoveCueCmd, RenumberCmd,
+    ReparentCuesCmd, SetCueFieldCmd,
 )
 
 
@@ -669,6 +670,13 @@ class MainWindow(QMainWindow):
     def push_set_field(self, cue_ids: list[str], field: str, new_value) -> None:
         self.undo_stack.push(
             SetCueFieldCmd(self.ws, cue_ids, field, new_value, self._undo_hook)
+        )
+
+    def push_reparent_cues(self, cue_ids: list[str], new_parent_id: str) -> None:
+        if not cue_ids:
+            return
+        self.undo_stack.push(
+            ReparentCuesCmd(self.ws, cue_ids, new_parent_id, self._undo_hook)
         )
 
     def begin_macro(self, label: str) -> None:

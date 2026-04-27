@@ -5,6 +5,41 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+Echte group-cues — parent/child-tracking, 4 fire-modes, stop-cascade.
+
+### Toegevoegd
+- **Group-cue heeft nu inhoud**. Cue krijgt een `parent_group_id`-veld
+  (lege string = top-level), waarmee de cuelist een echte tree wordt.
+  Workspace blijft een platte lijst, parent-pointer-pattern voor
+  simpele JSON-roundtrip en undo.
+- **Vier fire-modes** voor `group_mode`:
+  - `list` — playhead stapt in de group, operator GO't door de
+    children handmatig
+  - `first-then-list` — children worden achter elkaar afgevuurd door
+    de controller, ongeacht hun individuele continue_mode; de
+    globale playhead skipt voorbij de hele group-block
+  - `parallel` — alle children tegelijk
+  - `random` — één willekeurig child
+- **Stop-cascade** — een Stop-cue op een group stopt alle nakomelingen
+  recursief. Stop All ruimt ook lopende group-chains op.
+- **Cuelist als boom** — children renderen onder hun parent met
+  uitklapbare disclosure-arrows; expand-state blijft bewaard tussen
+  refreshes. `_id_to_item`-map zorgt voor O(1) lookups in nested
+  structuren.
+- **Right-click context-menu** in de cuelist met "Move into group →
+  ..." (ondermenu met alle beschikbare groups, exclusief zichzelf en
+  ancestors om cycles te voorkomen) en "Move out of group". Nieuwe
+  `ReparentCuesCmd` undo-command bewaart oude parent + index per cue.
+- **Inspector group-panel** met dropdown voor de mode + label "X
+  direct (Y total)" met child-counts.
+- **Workspace-helpers**: `children_of`, `descendants_of`,
+  `is_in_group`, `first_index_after_group` voor playhead-berekening.
+
+### Tests
+- 12 nieuwe tests: tree-helpers, JSON-roundtrip, vier fire-modes,
+  stop-cascade, manual-stop-breaks-chain, lege group is no-op.
+  Totaal 142 passed.
+
 ## [0.5.0] — 2026-04-27
 
 DMX als nieuw cue-type — Art-Net + sACN (E1.31), drie modes (snapshot,
