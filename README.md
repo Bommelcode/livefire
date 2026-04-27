@@ -59,6 +59,29 @@ Cue-based playback voor Windows live events. QLab-geïnspireerd, Windows-native.
 - **"Learn…"-knop** in de inspector vult het OSC-trigger-veld automatisch in
   op basis van de eerstvolgende OSC-message.
 
+### Companion / Stream Deck integratie
+liveFire spreekt OSC met [Bitfocus Companion](https://bitfocus.io/companion)
+zodat een Stream Deck automatisch met cues + live feedback gevuld kan worden.
+
+**Built-in transport-API** (commands die Companion naar liveFire stuurt):
+`/livefire/go`, `/livefire/stop_all`, `/livefire/playhead/{next,prev,goto}`,
+`/livefire/fire/<cue_number>`. Werkt naast het bestaande per-cue
+`trigger_osc`-veld, dus oude flows breken niet.
+
+**Feedback push** (liveFire → Companion, configureerbaar via Voorkeuren →
+Companion): periodiek (default 100 ms) `/livefire/playhead`,
+`/livefire/active`, `/livefire/remaining`, `/livefire/remaining/label`,
+`/livefire/countdown_active`. On-event per-cue state +
+`/livefire/cuecount`. Companion's variables-systeem leest dit direct in
+zodat `$(livefire:remaining_formatted)` op een Stream Deck-knop terugtelt.
+
+**Companion-module** in [`companion-module/companion-module-livefire/`](companion-module/companion-module-livefire/):
+TypeScript Node.js-project met `@companion-module/base`, kant-en-klare
+**presets** voor GO / Stop All / Playhead next/prev / remaining-time tile /
+quick-fire 1..16 die oplichten zodra hun cue running is. Build met
+`yarn install && yarn build` en wijs Companion's *Settings → Developer
+modules* naar de map.
+
 ### UI
 - Dark theme met cue-list, inspector, transport bar.
 - App-icoon zichtbaar in titlebar, Alt-Tab en taskbar (eigen
@@ -165,9 +188,10 @@ roundtrip nodig, werkt offline.
 
 ## Roadmap
 
-- **v0.4.x** — MIDI in/out (Companion / Stream Deck triggering en
-  outgoing MIDI-cues), echte Group-cues met parent/child tracking en
-  fire-modes, audio-matrix per cue (multi-output routing)
+- **v0.4.x** — MIDI in/out (outgoing MIDI-cues + extern timecode),
+  echte Group-cues met parent/child tracking en fire-modes,
+  audio-matrix per cue (multi-output routing). Companion / Stream Deck
+  triggering staat al ✓ — zie *Companion / Stream Deck integratie*.
 - **v0.5.0** — DMX/Art-Net + sACN voor licht-cues
 - **v0.6.0** — NDI-out, Cart-cue UI (soundboard-grid), MTC/LTC
   in/out (timecode chase + generate)
