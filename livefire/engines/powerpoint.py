@@ -15,9 +15,13 @@ duidelijke foutmelding).
 from __future__ import annotations
 
 import ctypes
+import re
+import shutil
 import sys
 import time
+import xml.etree.ElementTree as ET
 import zipfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6.QtCore import QObject, pyqtSignal
@@ -63,6 +67,362 @@ def count_slides(file_path: str) -> int | None:
             )
     except (zipfile.BadZipFile, OSError, KeyError):
         return None
+
+
+# Audio/video-extensies zoals PowerPoint ze typisch in ppt/media/ embed.
+# Houd dit lijstje liever te ruim dan te krap — onbekende extensies komen
+# als losse cue terug en falen dan netjes in de eigen engine.
+_PPT_AUDIO_EXTS: frozenset[str] = frozenset({
+    ".mp3", ".wav", ".m4a", ".wma", ".aac", ".aiff", ".aif",
+    ".ogg", ".flac", ".mid", ".midi",
+})
+_PPT_VIDEO_EXTS: frozenset[str] = frozenset({
+    ".mp4", ".mov", ".wmv", ".avi", ".mkv", ".webm", ".m4v",
+})
+
+_RELS_NAME_RE = re.compile(r"^ppt/slides/_rels/slide(\d+)\.xml\.rels$")
+_RELS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+_PRES_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+_DOC_REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+_RID_RE = re.compile(r"^rId(\d+)$")
+_INDEFINITE = ("indefinite", "infinite", "infinity")
+
+
+@dataclass(frozen=True)
+class SlideMedia:
+    """Embedded media-referentie op een PowerPoint-slide.
+
+    Velden zijn pure data — de import-flow vertaalt ze naar Cue-velden:
+
+    * ``trigger`` — ``"auto"`` betekent: media start zodra de slide
+      verschijnt; vertaalt naar ``ContinueMode.AUTO_CONTINUE`` op de
+      vorige cue. ``"click"`` betekent: media wacht op een GO van de
+      operator (PowerPoint's animatie-step in mainSeq, of een
+      ``delay="indefinite"`` start-conditie).
+    * ``delay_s`` — extra wachttijd vóór playback start; vertaalt naar
+      ``Cue.pre_wait``.
+    * ``loop`` — ``repeatCount="indefinite"`` in de timing-tree;
+      vertaalt naar ``Cue.loops = 0``.
+    * ``volume`` — lineair 0..1 (uit ``cMediaNode/@vol``, mute-attr);
+      door de import-flow omgerekend naar dB voor ``Cue.volume_db``.
+    """
+
+    path: str
+    kind: str           # "audio" of "video"
+    trigger: str = "click"   # "auto" of "click"
+    delay_s: float = 0.0
+    loop: bool = False
+    volume: float = 1.0
+
+
+def _resolve_zip_target(base_dir: str, target: str) -> str:
+    """Resolve een ZIP-relatieve ``Target`` tov ``base_dir``.
+
+    Voorbeeld: een slide-rels heeft ``base_dir='ppt/slides'`` en een
+    relationship-target ``'../media/foo.mp3'`` → ``'ppt/media/foo.mp3'``.
+    """
+    parts = base_dir.split("/")
+    for chunk in target.replace("\\", "/").split("/"):
+        if chunk in ("", "."):
+            continue
+        if chunk == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(chunk)
+    return "/".join(parts)
+
+
+def _rid_numeric_key(rid: str) -> tuple[int, int, str]:
+    """Sorteer rId-strings op de numerieke suffix.
+
+    PowerPoint nummert insertion-order via ``rId1``, ``rId2``... String-
+    sortering werkt niet (``rId10`` zou vóór ``rId2`` komen) — ontleed
+    daarom expliciet de numerieke suffix."""
+    m = _RID_RE.match(rid)
+    if m:
+        return (0, int(m.group(1)), rid)
+    return (1, 0, rid)
+
+
+def _build_parent_map(root: ET.Element) -> dict[ET.Element, ET.Element]:
+    """ElementTree heeft geen parent-pointer; bouw 'm zelf op zodat we
+    omhoog kunnen lopen vanaf een gevonden timing-target."""
+    return {child: parent for parent in root.iter() for child in parent}
+
+
+def _walk_ancestors(elem: ET.Element, parent_map: dict[ET.Element, ET.Element]):
+    """Yield voorouders van ``elem`` (exclusief ``elem`` zelf)."""
+    while elem in parent_map:
+        elem = parent_map[elem]
+        yield elem
+
+
+def _meta_from_timing_target(
+    target: ET.Element,
+    parent_map: dict[ET.Element, ET.Element],
+) -> dict:
+    """Walk omhoog vanaf een ``<p:sndTgt>`` of ``<p:spTgt>`` en lees de
+    timing-eigenschappen.
+
+    De relevante ``<p:cTn>`` is in PowerPoint-XML een **sibling** van
+    het target (beide zijn child van ``<p:cMediaNode>``), niet een
+    voorouder. Vandaar dat we volume/mute én cTn-attributen plukken zodra
+    we de eerste ``<p:cMediaNode>``-voorouder zien. Het oplopen daarna
+    dient enkel om de ``mainSeq``-context te detecteren (= operator-
+    klik-step).
+    """
+    p = f"{{{_PRES_NS}}}"
+
+    delay_s = 0.0
+    loop = False
+    volume = 1.0
+    indefinite_start = False
+    in_main_seq = False
+    found_cmedia = False
+
+    for ancestor in _walk_ancestors(target, parent_map):
+        tag = ancestor.tag
+
+        if not found_cmedia and tag == f"{p}cMediaNode":
+            found_cmedia = True
+            vol_attr = ancestor.get("vol")
+            if vol_attr is not None:
+                try:
+                    pct = int(vol_attr) / 100000.0
+                    volume = max(0.0, min(1.0, pct))
+                except ValueError:
+                    pass
+            if ancestor.get("mute") in ("1", "true"):
+                volume = 0.0
+
+            # cTn is een sibling van target — pak 'm via cMediaNode.find().
+            ctn = ancestor.find(f"{p}cTn")
+            if ctn is not None:
+                rc = ctn.get("repeatCount", "")
+                if rc.strip().lower() in _INDEFINITE:
+                    loop = True
+                cond = ctn.find(f"{p}stCondLst/{p}cond")
+                if cond is not None:
+                    d = cond.get("delay", "")
+                    if d.strip().lower() in _INDEFINITE:
+                        indefinite_start = True
+                    else:
+                        try:
+                            ms = int(d)
+                            if ms > 0:
+                                delay_s = ms / 1000.0
+                        except ValueError:
+                            pass
+
+        if tag == f"{p}cTn" and ancestor.get("nodeType") == "mainSeq":
+            in_main_seq = True
+
+    # Trigger-bepaling:
+    #   * Media binnen mainSeq → click (operator stept door animaties).
+    #   * Media met expliciete delay="indefinite" → click (wacht-op-trigger).
+    #   * Anders → auto (slide-soundtrack-stijl, start bij slide-load).
+    trigger = "click" if (in_main_seq or indefinite_start) else "auto"
+
+    return {
+        "trigger": trigger,
+        "delay_s": delay_s,
+        "loop": loop,
+        "volume": volume,
+    }
+
+
+def _scan_shape_for_media_rid(
+    shape: ET.Element, nv_path: str,
+) -> tuple[str, str] | None:
+    """Voor een ``<p:sp>`` of ``<p:pic>``: lees ``(spid, rid)`` als de
+    shape een ``<p:videoFile>`` of ``<p:audioFile>`` heeft. ``nv_path``
+    is het tag-pad naar de nv-property-container (``p:nvSpPr`` of
+    ``p:nvPicPr``)."""
+    p = f"{{{_PRES_NS}}}"
+    r = f"{{{_DOC_REL_NS}}}"
+
+    cnv = shape.find(f"{nv_path}/{p}cNvPr")
+    if cnv is None:
+        return None
+    spid = cnv.get("id", "")
+    if not spid:
+        return None
+    nvpr = shape.find(f"{nv_path}/{p}nvPr")
+    if nvpr is None:
+        return None
+    for tag_name in ("videoFile", "audioFile"):
+        file_el = nvpr.find(f"{p}{tag_name}")
+        if file_el is None:
+            continue
+        rid = file_el.get(f"{r}link") or file_el.get(f"{r}embed")
+        if rid:
+            return spid, rid
+    return None
+
+
+def _extract_slide_timing_meta(slide_xml: bytes) -> dict[str, dict]:
+    """Map iedere media-rId in deze slide naar een timing-meta-dict.
+
+    Twee patronen worden herkend:
+
+    A. **Direct** — ``<p:sndTgt r:embed="rIdN"/>`` in de timing-tree.
+       Dit zie je vaak voor audio-cues die met QuickTime/Sound-objecten
+       geplaatst zijn.
+
+    B. **Via shape-spid** — ``<p:spTgt spid="X"/>`` in de timing-tree,
+       waarbij shape ``X`` in ``<p:cSld>`` een ``<p:videoFile>`` of
+       ``<p:audioFile>`` met ``r:link``/``r:embed`` heeft. Dit is het
+       gangbare patroon in moderne PowerPoint-bestanden.
+    """
+    try:
+        root = ET.fromstring(slide_xml)
+    except ET.ParseError:
+        return {}
+
+    parent_map = _build_parent_map(root)
+    p = f"{{{_PRES_NS}}}"
+    r = f"{{{_DOC_REL_NS}}}"
+
+    result: dict[str, dict] = {}
+
+    # Pattern A — direct sndTgt in timing
+    for tgt in root.iter(f"{p}sndTgt"):
+        rid = tgt.get(f"{r}embed") or tgt.get(f"{r}link") or ""
+        if rid and rid not in result:
+            result[rid] = _meta_from_timing_target(tgt, parent_map)
+
+    # Pattern B — spid lookup via shape-tree
+    spid_to_rid: dict[str, str] = {}
+    for shape in root.iter(f"{p}sp"):
+        found = _scan_shape_for_media_rid(shape, f"{p}nvSpPr")
+        if found:
+            spid_to_rid[found[0]] = found[1]
+    for shape in root.iter(f"{p}pic"):
+        found = _scan_shape_for_media_rid(shape, f"{p}nvPicPr")
+        if found:
+            spid_to_rid[found[0]] = found[1]
+
+    for sp_tgt in root.iter(f"{p}spTgt"):
+        spid = sp_tgt.get("spid", "")
+        rid = spid_to_rid.get(spid)
+        if not rid or rid in result:
+            continue
+        result[rid] = _meta_from_timing_target(sp_tgt, parent_map)
+
+    return result
+
+
+def extract_slide_media(
+    file_path: str, output_dir: str,
+) -> dict[int, list[SlideMedia]]:
+    """Pak embedded audio + video uit een .pptx/.pptm uit per slide.
+
+    Voor iedere media-referentie wordt waar mogelijk de PowerPoint
+    timing-tree geïnterpreteerd: trigger (autoplay vs. wacht-op-klik),
+    start-delay, loop-flag en volume. Niet-detecteerbare velden
+    krijgen veilige defaults (trigger=click, delay=0, loop=False,
+    volume=1.0).
+
+    Returns ``{slide_number: [SlideMedia, ...]}``. Externe links
+    (``TargetMode="External"``), niet-(.pptx/.pptm)-bestanden en
+    bestanden die niet als ZIP openen leveren een lege dict.
+
+    Output-layout: bestanden gaan naar
+    ``output_dir/media/<oorspronkelijke_naam>``. Komt hetzelfde
+    media-bestand op meerdere slides voor, dan pakken we 'm één keer
+    uit en mappen we hetzelfde pad naar iedere slide.
+    """
+    ext = Path(file_path).suffix.lower()
+    if ext not in {".pptx", ".pptm"}:
+        return {}
+
+    out_dir = Path(output_dir)
+    media_dir = out_dir / "media"
+    result: dict[int, list[SlideMedia]] = {}
+
+    try:
+        with zipfile.ZipFile(file_path, "r") as zf:
+            namelist = set(zf.namelist())
+            extracted: dict[str, str] = {}  # zip-pad → uitgepakt-pad
+
+            for name in sorted(namelist):
+                m = _RELS_NAME_RE.match(name)
+                if not m:
+                    continue
+                slide_num = int(m.group(1))
+
+                # Lees rels — geeft rId → (zip_path, kind)
+                try:
+                    rels_xml = zf.read(name)
+                    rels_root = ET.fromstring(rels_xml)
+                except (KeyError, ET.ParseError):
+                    continue
+
+                rid_map: dict[str, tuple[str, str]] = {}
+                for rel in rels_root.findall(f"{{{_RELS_NS}}}Relationship"):
+                    if rel.get("TargetMode") == "External":
+                        continue
+                    rid = rel.get("Id", "")
+                    target = rel.get("Target", "")
+                    if not (rid and target):
+                        continue
+                    target_path = _resolve_zip_target("ppt/slides", target)
+                    if target_path not in namelist:
+                        continue
+                    target_ext = Path(target_path).suffix.lower()
+                    if target_ext in _PPT_AUDIO_EXTS:
+                        kind = "audio"
+                    elif target_ext in _PPT_VIDEO_EXTS:
+                        kind = "video"
+                    else:
+                        continue
+                    rid_map[rid] = (target_path, kind)
+
+                if not rid_map:
+                    continue
+
+                # Lees slide-XML voor timing-metadata
+                slide_path = f"ppt/slides/slide{slide_num}.xml"
+                timing_meta: dict[str, dict] = {}
+                if slide_path in namelist:
+                    try:
+                        slide_xml = zf.read(slide_path)
+                        timing_meta = _extract_slide_timing_meta(slide_xml)
+                    except KeyError:
+                        pass
+
+                for rid in sorted(rid_map.keys(), key=_rid_numeric_key):
+                    target_path, kind = rid_map[rid]
+
+                    out_path = extracted.get(target_path)
+                    if out_path is None:
+                        try:
+                            media_dir.mkdir(parents=True, exist_ok=True)
+                        except OSError:
+                            continue
+                        dest = media_dir / Path(target_path).name
+                        try:
+                            with zf.open(target_path) as src, open(dest, "wb") as dst:
+                                shutil.copyfileobj(src, dst)
+                        except (KeyError, OSError):
+                            continue
+                        out_path = str(dest)
+                        extracted[target_path] = out_path
+
+                    meta = timing_meta.get(rid, {})
+                    result.setdefault(slide_num, []).append(SlideMedia(
+                        path=out_path,
+                        kind=kind,
+                        trigger=meta.get("trigger", "click"),
+                        delay_s=meta.get("delay_s", 0.0),
+                        loop=meta.get("loop", False),
+                        volume=meta.get("volume", 1.0),
+                    ))
+    except (zipfile.BadZipFile, OSError):
+        return {}
+
+    return result
 
 
 def export_slides_to_png(

@@ -177,8 +177,8 @@ def test_engine_sends_to_local_dispatcher(qt_app) -> None:
     server = ThreadingOSCUDPServer(("127.0.0.1", port), disp)
     th = threading.Thread(target=server.serve_forever, daemon=True)
     th.start()
+    eng = OscOutputEngine()
     try:
-        eng = OscOutputEngine()
         if not eng.available:
             pytest.skip("python-osc niet geïnstalleerd")
         ok, err = eng.send("127.0.0.1", port, "/test/foo", [42, 0.5, "x"])
@@ -189,8 +189,13 @@ def test_engine_sends_to_local_dispatcher(qt_app) -> None:
         assert addr == "/test/foo"
         assert args == [42, 0.5, "x"]
     finally:
+        eng.shutdown()  # sluit de cached SimpleUDPClient + z'n socket
         server.shutdown()
         server.server_close()
+        # Wacht tot de daemon-thread serve_forever() echt heeft verlaten,
+        # anders blijft het socket-fd nog hangen en krijgen we een
+        # ResourceWarning bij test-teardown.
+        th.join(timeout=1.0)
 
 
 def test_engine_caches_clients_per_host_port(qt_app) -> None:
@@ -233,6 +238,9 @@ def test_engine_evicts_bad_client_on_send_error(qt_app) -> None:
     eng.send("127.0.0.1", port, "/x", [1])
     assert ("127.0.0.1", port) in eng._clients
 
+    # Sluit de echte client eerst — anders verliezen we 'm bij overwrite
+    # en blijft z'n UDP-socket hangen tot GC (ResourceWarning).
+    eng._close_client(eng._clients[("127.0.0.1", port)])
     # Forceer een fout door de cache-entry te corrumperen
     eng._clients[("127.0.0.1", port)] = "not-a-client"  # type: ignore
     ok, err = eng.send("127.0.0.1", port, "/x", [1])
@@ -294,4 +302,5 @@ def test_controller_fires_network_cue_end_to_end(qt_app, pro_license) -> None:
     finally:
         server.shutdown()
         server.server_close()
+        th.join(timeout=1.0)
 

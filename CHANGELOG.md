@@ -5,6 +5,99 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+Companion / Stream Deck-integratie, undo/redo + cut/copy/paste,
+Engelstalige UI als default, freemium-licensing tijdelijk uit, en
+een grondige UX-pass.
+
+### Toegevoegd
+- **Companion-integratie (OSC)** — nieuwe `OscFeedbackEngine` pusht
+  periodiek (default 100 ms) en on-event de transport-state naar een
+  configureerbare host:port. Adressen: `/livefire/playhead`,
+  `/livefire/active`, `/livefire/remaining`,
+  `/livefire/remaining/label`, `/livefire/countdown_active`, plus
+  per-cue `/livefire/cue/<n>/{state,name,type}` en `/livefire/cuecount`.
+  Controller-router voor inkomende commands `/livefire/go`,
+  `/livefire/stop_all`, `/livefire/playhead/{next,prev,goto}` en
+  `/livefire/fire/<cue_number>` — werkt naast het bestaande per-cue
+  `trigger_osc`-veld zodat oude flows niet breken. Voorkeuren →
+  Companion sectie (host/port/enable/interval).
+- **Companion-module** als losse repo
+  [Bommelcode/companion-module-livefire](https://github.com/Bommelcode/companion-module-livefire) —
+  TypeScript Node.js-project (`@companion-module/base` 1.10) met
+  actions, feedbacks, variables, en Stream Deck-presets voor transport,
+  status (incl. `$(livefire:remaining_formatted)` countdown-tile) en
+  fire-by-number 1..16 die oplichten zodra hun cue running is.
+- **Undo / Redo** voor alle workspace-mutaties — Edit-menu met
+  Ctrl+Z / Ctrl+Y. Commands voor add/remove/move/renumber + set-field
+  met `mergeWith` zodat snel scrollen door een spinbox of typen in een
+  textfield als één undo-stap geldt.
+- **Cut / Copy / Paste van cues** (Ctrl+X / Ctrl+C / Ctrl+V) — JSON
+  serialisatie via clipboard met eigen MIME-type, paste genereert
+  nieuwe UUIDs zodat duplicaten hun eigen identity hebben.
+- **Inline Continue-dropdown** — klik in de Continue-kolom in de cuelist
+  om de mode direct te wijzigen; multi-select propageert de wijziging
+  naar alle geselecteerde cues.
+- **PPT-import: timing-tree + embedded media** — `extract_slide_media`
+  leest het `<p:timing>`-tree per slide en levert per media-item
+  trigger (auto/click), delay, loop, volume. De import-flow vertaalt
+  dat naar `continue_mode = AUTO_CONTINUE` op de vorige cue,
+  `pre_wait`, `loops = 0`, en `volume_db` (geklemd −60..0 dB).
+- **Engine-status registry** voor de Companion-feedback-engine.
+
+### Gewijzigd
+- **UI-taal**: Engelse strings als default (i18n NL/EN-toggle blijft).
+  Alle hardcoded Nederlandse strings in mainwindow / inspector /
+  cuelist / cuetoolbar / transport / dialogs zijn vertaald.
+- **Freemium licensing tijdelijk uit** via `LICENSING_ENABLED = False`
+  — alle cue-types zijn open, code blijft staan voor latere re-enable.
+  Help → Licentie-menu wordt verborgen wanneer disabled.
+- **Visual Studio-stijl UI** — Segoe UI 9pt globaal, knoppen +
+  inputs lager, spinbox up/down naast elkaar (full-height),
+  selection-background expliciet zodat Windows-accent niet
+  binnen-bleed't.
+- **Cue-toolbar** als witte vector-glyphs (4× supersampled QPainter,
+  geen asset-files) i.p.v. tekstlabels.
+- **Kleurkiezer** is een rij swatches (oranje ring op selectie,
+  diagonale streep voor "None") i.p.v. een dropdown.
+- **Radio buttons** gestyled met oranje dot voor leesbaarheid op
+  donker thema.
+- **Cue-shortcuts** hernummerd in menu-volgorde: Ctrl+1 Audio, +2 Video,
+  +3 Image, +4 Presentation, +5 Network, +6 Fade, +7 Wait, +8 Stop,
+  +9 Group, +0 Memo.
+- **Cue-menu**: padding zodat sneltoets-aanduiding niet tegen het
+  label aankruipt.
+- **Splitter**: cue-list groeit met het venster, inspector pinned aan
+  de rechterrand. Cue-toolbar in een horizontale scroll-area zodat
+  splitter-drag niet vast zit aan de toolbar-breedte.
+- **Window-geometrie persistent** met scherm-overlap-guard: als een
+  extern scherm verdwenen is, klapt 't venster terug naar gecentreerd
+  i.p.v. buiten beeld te zitten.
+- **PPT-import dialog**: option-omschrijvingen gebruiken `TEXT_DIM`
+  i.p.v. `palette(mid)` (was onleesbaar op donker thema).
+
+### Opgelost
+- **Image-flicker** bij harde cuts tussen image-cues — `ImageWindow`
+  opacity wordt expliciet gezet vóór `show_fullscreen()`, en de vorige
+  cue wordt pas hard-gesloten ná het tonen van het nieuwe window.
+- **OSC-input thread** wordt nu gejoind in `stop()` zodat de UDP-socket
+  vrijkomt vóór reuse — geen "address already in use" meer bij
+  Preferences-toggle, geen ResourceWarnings in tests.
+- **OscLearnDialog** disconnect ook in `closeEvent`, niet alleen via
+  accept/reject — voorkomt `RuntimeError` als de modal via X gesloten
+  wordt en daarna een OSC-bericht binnenkomt.
+- **OscOutputEngine.send()** sluit het socket van een geëvicte client
+  zodat snelle sends naar een onbereikbare host geen file-descriptors
+  lekken.
+- **Diverse test-cleanup-paden** strakker (th.join na server-shutdown,
+  expliciete eng.shutdown na sends).
+
+### Documentatie
+- **CLAUDE.md** gesynchroniseerd met v0.4.1 — versie, projectstructuur,
+  voltooide roadmap-items, huidige tech stack incl. licensing-flag en
+  Companion-integratie.
+- **README.md** beschrijft de Companion-integratie met OSC-contract en
+  linkt naar de losse module-repo.
+
 ## [0.4.1] — 2026-04-26
 
 Image-cue als nieuw cue-type, plus PPT-import-keuze: laat de show

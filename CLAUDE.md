@@ -10,59 +10,95 @@ Eigenaar: Sil Stranders (S.I.L. Stranders, AV freelance, NL).
 
 ## Doel
 
-Cue-based audio / video / MIDI / OSC / DMX playback voor live shows. Moet
-draaiend te krijgen zijn op showlocaties zonder internet. Wordt mogelijk gedeeld
-met AV-collega's — eindtoestand is een Windows `.exe` installer.
+Cue-based audio / video / image / OSC / PowerPoint playback voor live shows.
+Moet draaiend te krijgen zijn op showlocaties zonder internet. Wordt mogelijk
+gedeeld met AV-collega's — eindtoestand is een Windows `.exe` installer.
 
-Huidige versie: **0.3.0** (modulaire package, sounddevice master-mixer audio
-engine, skeleton met Audio/Fade/Wait/Stop/Start/Group/Memo cues).
+Huidige versie: **0.4.1** (Audio + Video + Image + Network/OSC-out +
+PowerPoint-import incl. timing-tree, OSC-in triggers, freemium-licensing-
+systeem aanwezig maar tijdelijk uitgezet via `LICENSING_ENABLED=False`).
 
 ## Tech stack
 
 - **Taal**: Python 3.11+ (Windows native, geen WSL)
 - **GUI**: PyQt6
 - **Audio**: `sounddevice` + `numpy` + `soundfile` (master-mixer in numpy,
-  WASAPI shared/exclusive op Windows, optioneel ASIO). Per-cue streams mixen
-  we softwarematig zodat matrix + crossfades mogelijk worden in v0.3.x.
-- **Video** (gepland v0.6.0): `python-vlc` als eerste keus vanwege hw-accel
-  en codec-dekking; `cyndilib` voor NDI-out. Fallback PyAV+OpenGL als libVLC
-  tegenvalt.
-- **MIDI** (gepland v0.4.0): `mido` + `python-rtmidi` (in + out)
-- **OSC** (gepland v0.4.0): `python-osc` (in + out)
-- **DMX** (gepland v0.5.0): `pyartnet` (Art-Net), `sacn` (sACN E1.31)
-- **Packaging** (gepland v1.0.0): PyInstaller + Inno Setup
-- **Tests**: `pytest` handmatig; geen CI-verplichting (nog)
+  WASAPI shared/exclusive op Windows, optioneel ASIO).
+- **Video**: `python-vlc` (libVLC) — hw-accel, codec-dekking.
+  Multi-screen output, fade-to-black, in/out-trim met preview.
+- **Image**: pure Qt (`QPixmap` + frameless `QWidget`) — fullscreen stills
+  met fade-in/out + crossfade per output-screen.
+- **OSC**: `python-osc` voor input (cue-triggers vanaf Companion / Stream
+  Deck) en output (Network-cues).
+- **PowerPoint**: COM-besturing via `pywin32` voor live-slideshow + slide-
+  export naar PNG. Pure-Python `zipfile`+`xml.etree` parser leest het
+  `.pptx`-archief voor slide-count, embedded media, en het timing-tree
+  (autoplay/click/loop/volume) zonder PowerPoint te starten.
+- **MIDI** (gepland, nog niet aanwezig): `mido` + `python-rtmidi` (in + out).
+- **DMX** (gepland v0.5.x): `pyartnet` (Art-Net), `sacn` (sACN E1.31).
+- **Licensing**: lokale HMAC-SHA256 keys (`livefire/licensing.py`). Module
+  is volledig geïmplementeerd maar door `LICENSING_ENABLED = False` staan
+  alle Pro-features open en is het Help → Licentie…-menu verborgen.
+- **Packaging** (gepland v1.0.0): PyInstaller + Inno Setup.
+- **Tests**: `pytest` (~100 tests), geen CI-verplichting (nog).
 
-## Projectstructuur (huidige v0.3.0)
+## Projectstructuur (v0.4.1)
 
 ```
-livefire-0.3.0/
+livefire-0.4.1/
 ├── livefire/
-│   ├── __init__.py           # versie, constanten, WORKSPACE_EXT
+│   ├── __init__.py           # APP_VERSION, SETTINGS_*, WORKSPACE_EXT
 │   ├── __main__.py           # python -m livefire
 │   ├── workspace.py          # .livefire save/load + versiemigratie
+│   ├── i18n.py               # NL/EN-toggle (via QSettings)
+│   ├── licensing.py          # HMAC-keys + LICENSING_ENABLED-flag
 │   ├── cues/
 │   │   ├── __init__.py
-│   │   └── base.py           # Cue dataclass, CueType, ContinueMode
+│   │   └── base.py           # Cue dataclass, CueType, ContinueMode,
+│   │                         # PresentationAction
 │   ├── engines/
 │   │   ├── __init__.py
+│   │   ├── registry.py       # engine-status registry (Help → Engine-status)
 │   │   ├── audio.py          # sounddevice master-mixer + AudioSource
-│   │   └── registry.py       # engine-status registry
+│   │   ├── video.py          # libVLC + preload + lingering windows
+│   │   ├── image.py          # Qt fullscreen-still + crossfade
+│   │   ├── osc.py            # OSC-input via BlockingOSCUDPServer
+│   │   ├── osc_out.py        # OSC-output (Network-cues)
+│   │   └── powerpoint.py     # COM-engine + .pptx parser
+│   │                         #   (count_slides, extract_slide_media,
+│   │                         #    SlideMedia, export_slides_to_png)
 │   ├── playback/
 │   │   ├── __init__.py
-│   │   └── controller.py     # GO-pipeline, pre/post-wait, continues
+│   │   └── controller.py     # GO-pipeline, pre/post-wait, continues,
+│   │                         # license-gate, _tick polling
 │   └── ui/
 │       ├── __init__.py
-│       ├── mainwindow.py
+│       ├── mainwindow.py     # geometry-persistence, splitter-setup,
+│       │                     # PPT-import-flow, drag-drop
 │       ├── cuelist.py
-│       ├── inspector.py
+│       ├── cuetoolbar.py
+│       ├── inspector.py      # ~960 regels, per cue-type een form-groep
 │       ├── transport.py
+│       ├── video_preview.py  # in/out-trim met scrub-preview
 │       ├── style.py          # dark theme stylesheet
 │       └── dialogs/
 │           ├── about.py
-│           └── engine_status.py
+│           ├── engine_status.py
+│           ├── license.py
+│           ├── ppt_import.py     # slides-export vs single-presentation
+│           ├── preferences.py    # device-pickers + OSC-port
+│           └── trigger_learn.py  # OSC-learn modal
 ├── tests/
+│   ├── conftest.py
+│   ├── test_audio_engine.py
+│   ├── test_image_cue.py
+│   ├── test_licensing.py
+│   ├── test_network_cue.py
+│   ├── test_osc.py
+│   ├── test_pptx_count.py
+│   ├── test_pptx_media.py
 │   └── test_workspace.py
+├── tools/                    # genkey.py, issue_license.py
 ├── installer/                # leeg — Inno Setup komt in v1.0
 ├── requirements.txt
 ├── requirements-dev.txt
@@ -71,12 +107,6 @@ livefire-0.3.0/
 ├── README.md
 └── CHANGELOG.md
 ```
-
-Geplande uitbreiding van deze structuur per release:
-- v0.4.0 → `livefire/cues/midi.py`, `livefire/cues/osc.py`, `engines/midi.py`, `engines/osc.py`
-- v0.5.0 → `livefire/cues/dmx.py`, `engines/dmx.py`
-- v0.6.0 → `livefire/cues/video.py`, `engines/video.py`
-- v1.0.0 → `installer/livefire.iss` + `livefire.spec`
 
 ## Conventies
 
@@ -103,18 +133,21 @@ Geplande uitbreiding van deze structuur per release:
 
 ## Roadmap
 
-1. **v0.3.0** (huidig) — Refactor single-file → modules + audio-engine
-   migratie naar sounddevice master-mixer. Audio/Fade/Wait/Stop/Start/
-   Group/Memo cue-types werkend.
-2. **v0.3.1** — Output-device picker (QSettings), per-cue output-device,
-   audio-matrix routing.
-3. **v0.3.2** — Crossfades tussen overlappende audio-cues.
-4. **v0.4.0** — OSC-in + MIDI-in (cue-triggering vanaf Companion / Stream
-   Deck / externe consoles). Inclusief "learn" dialog in de inspector.
-5. **v0.5.0** — DMX/Art-Net + sACN cue-types met preset + chase + fade.
-6. **v0.6.0** — Video-engine: libVLC voor hw-accel, cyndilib voor NDI-out,
-   multi-screen output, fade-to-black.
-7. **v1.0.0** — Installer (.exe via PyInstaller + Inno Setup), docs,
+Gedaan (v0.3.0 t/m v0.4.1):
+- v0.3.0 — Refactor single-file → modules, sounddevice master-mixer.
+- v0.3.1/v0.3.2 — Output-device picker (QSettings), crossfades.
+- v0.4.0 — OSC-in (Companion/StreamDeck triggers) incl. learn-dialog,
+  PowerPoint-cues via COM, video-engine (libVLC), zwart-vrije transitions,
+  NL/EN i18n-toggle, app-icoon + splash + Over-dialog.
+- v0.4.1 — Image-cues, Network-cues (OSC-out), PowerPoint slide-export
+  naar PNGs incl. embedded media (audio/video) en timing-tree-mapping
+  (autoplay/click → continue_mode, loop, volume), freemium-licensing
+  (HMAC-keys, momenteel uitgezet via `LICENSING_ENABLED`).
+
+Nog te doen:
+1. **v0.4.x** — MIDI-in/out (`mido` + `python-rtmidi`).
+2. **v0.5.0** — DMX/Art-Net + sACN cue-types met preset + chase + fade.
+3. **v1.0.0** — Installer (.exe via PyInstaller + Inno Setup), docs,
    stabilisatieronde, eerste publieke release naar collega's.
 
 ## Build / run

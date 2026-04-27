@@ -20,10 +20,10 @@ from ... import licensing
 
 
 _TIER_LABELS = {
-    licensing.LicenseTier.DAY:      "1 dag",
-    licensing.LicenseTier.MONTH:    "1 maand",
-    licensing.LicenseTier.YEAR:     "1 jaar",
-    licensing.LicenseTier.LIFETIME: "Lifetime (geen einddatum)",
+    licensing.LicenseTier.DAY:      "1 day",
+    licensing.LicenseTier.MONTH:    "1 month",
+    licensing.LicenseTier.YEAR:     "1 year",
+    licensing.LicenseTier.LIFETIME: "Lifetime (no expiry)",
 }
 
 
@@ -34,7 +34,7 @@ def _fmt_eur(amount: float) -> str:
 class LicenseDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("liveFire — Licentie")
+        self.setWindowTitle("liveFire — License")
         self.setMinimumWidth(480)
         self.setWindowFlags(
             Qt.WindowType.Dialog
@@ -52,16 +52,16 @@ class LicenseDialog(QDialog):
         lay.addWidget(self.lbl_status)
 
         explainer = QLabel(
-            "Audio-cues en de organisatorische types (Wacht, Stop, Fade, "
-            "Start, Groep, Memo) zijn altijd gratis. Video, Afbeelding, "
-            "Presentatie en Network vereisen een Pro-licentie."
+            "Audio cues and the organisational types (Wait, Stop, Fade, "
+            "Start, Group, Memo) are always free. Video, Image, Presentation "
+            "and Network require a Pro license."
         )
         explainer.setWordWrap(True)
         explainer.setStyleSheet("color: palette(mid);")
         lay.addWidget(explainer)
 
         # ---- Aanschaf-knoppen --------------------------------------------
-        buy_grp = QGroupBox("Pro-licentie aanschaffen")
+        buy_grp = QGroupBox("Purchase Pro license")
         buy_lay = QVBoxLayout(buy_grp)
         for tier in (licensing.LicenseTier.DAY,
                      licensing.LicenseTier.MONTH,
@@ -72,7 +72,7 @@ class LicenseDialog(QDialog):
                 f"{_TIER_LABELS[tier]} — {_fmt_eur(licensing.PRICES_EUR[tier])}"
             )
             row.addWidget(label, 1)
-            btn = QPushButton("Koop")
+            btn = QPushButton("Buy")
             btn.setMinimumWidth(80)
             btn.clicked.connect(lambda _, t=tier: self._open_purchase(t))
             row.addWidget(btn)
@@ -80,23 +80,23 @@ class LicenseDialog(QDialog):
         lay.addWidget(buy_grp)
 
         # ---- Activeren ----------------------------------------------------
-        act_grp = QGroupBox("Licentiekey activeren")
+        act_grp = QGroupBox("Activate license key")
         act_lay = QVBoxLayout(act_grp)
         act_lay.addWidget(QLabel(
-            "Plak hier de key die je per mail hebt ontvangen na aanschaf."
+            "Paste the key you received by email after purchase."
         ))
         row = QHBoxLayout()
         self.ed_key = QLineEdit()
         self.ed_key.setPlaceholderText("LF-MONTH-2026-12-31-A1B2C3D4")
         row.addWidget(self.ed_key, 1)
-        self.btn_activate = QPushButton("Activeer")
+        self.btn_activate = QPushButton("Activate")
         self.btn_activate.clicked.connect(self._activate)
         row.addWidget(self.btn_activate)
         act_lay.addLayout(row)
         lay.addWidget(act_grp)
 
         # Deactiveer-knop (alleen zichtbaar als er een Pro-licentie is)
-        self.btn_deactivate = QPushButton("Licentie verwijderen")
+        self.btn_deactivate = QPushButton("Remove license")
         self.btn_deactivate.setFlat(True)
         self.btn_deactivate.clicked.connect(self._deactivate)
         deact_row = QHBoxLayout()
@@ -112,7 +112,7 @@ class LicenseDialog(QDialog):
 
         btn_row = QHBoxLayout()
         btn_row.addStretch(1)
-        btn_close = QPushButton("Sluiten")
+        btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.accept)
         btn_row.addWidget(btn_close)
         lay.addLayout(btn_row)
@@ -137,18 +137,18 @@ class LicenseDialog(QDialog):
             return
         ok, msg = licensing.activate(key)
         if ok:
-            QMessageBox.information(self, "Activatie gelukt", msg)
+            QMessageBox.information(self, "Activation successful", msg)
             self.ed_key.clear()
         else:
-            QMessageBox.warning(self, "Activatie mislukt", msg)
+            QMessageBox.warning(self, "Activation failed", msg)
         self._refresh_status()
 
     def _deactivate(self) -> None:
         r = QMessageBox.question(
-            self, "Licentie verwijderen",
-            "Weet je zeker dat je je huidige licentie wil verwijderen? "
-            "Je kunt 'm later weer activeren met dezelfde key, mits niet "
-            "verlopen.",
+            self, "Remove license",
+            "Are you sure you want to remove your current license? "
+            "You can re-activate it later with the same key, as long as it "
+            "hasn't expired.",
         )
         if r == QMessageBox.StandardButton.Yes:
             licensing.deactivate()

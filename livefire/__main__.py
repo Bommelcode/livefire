@@ -8,7 +8,7 @@ from pathlib import Path
 
 import ctypes
 from PyQt6.QtCore import Qt, QCoreApplication, QSettings
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWidgets import QApplication, QSplashScreen
 
 from . import APP_NAME, SETTINGS_ORG, SETTINGS_APP
@@ -35,7 +35,7 @@ def main() -> int:
     # level strings (bv. cuelist-kolomtitels) worden bij import al gezet.
     QCoreApplication.setOrganizationName(SETTINGS_ORG)
     QCoreApplication.setApplicationName(SETTINGS_APP)
-    set_language(QSettings().value("app/language", "nl", type=str))
+    set_language(QSettings().value("app/language", "en", type=str))
 
     # Imports hier zodat ze de juiste taal-strings oppakken.
     from .ui import MainWindow, build_stylesheet
@@ -45,6 +45,13 @@ def main() -> int:
     app.setOrganizationName(SETTINGS_ORG)
     app.setApplicationName(SETTINGS_APP)
     app.setApplicationDisplayName(APP_NAME)
+
+    # Visual Studio-stijl UI-font: Segoe UI 9pt op de QApplication zelf
+    # zodat álle widgets (incl. native dialogs en sub-windows zonder eigen
+    # stylesheet-regel) 'm overnemen. De stylesheet zet 't ook nog
+    # expliciet op QMainWindow/QWidget voor consistentie.
+    app.setFont(QFont("Segoe UI", 9))
+
     if _ICON_PATH.is_file():
         app.setWindowIcon(QIcon(str(_ICON_PATH)))
     app.setStyleSheet(build_stylesheet())

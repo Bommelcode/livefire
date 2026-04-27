@@ -107,7 +107,7 @@ def test_current_tier_and_is_pro_with_license(pro_license) -> None:
     assert licensing.days_remaining() > 0
 
 
-def test_status_summary_free_and_pro(qt_app) -> None:
+def test_status_summary_free_and_pro(qt_app, licensing_enabled) -> None:
     """Zet beide states expliciet en check de teksten."""
     from livefire import licensing
     saved = licensing._parsed
@@ -167,7 +167,7 @@ def test_prices_match_announced_pricing() -> None:
     assert PRICES_EUR[LicenseTier.LIFETIME] == 249.95
 
 
-def test_lifetime_key_roundtrip(qt_app) -> None:
+def test_lifetime_key_roundtrip(qt_app, licensing_enabled) -> None:
     """LIFETIME-keys gebruiken date(9999,12,31) als sentinel-einddatum
     en werken via dezelfde HMAC-flow als de termijn-tiers."""
     from livefire import licensing

@@ -12,13 +12,13 @@ from ...engines import registry
 class EngineStatusDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Engine-status")
+        self.setWindowTitle("Engine Status")
         self.resize(520, 340)
 
         lay = QVBoxLayout(self)
         lay.addWidget(QLabel(
-            "Overzicht van playback-engines. Wat niet beschikbaar is, "
-            "wordt hier met foutmelding getoond."
+            "Overview of playback engines. Anything that is unavailable "
+            "is shown here with its error message."
         ))
 
         self.txt = QPlainTextEdit()
@@ -27,7 +27,7 @@ class EngineStatusDialog(QDialog):
 
         row = QHBoxLayout()
         row.addStretch(1)
-        btn_close = QPushButton("Sluiten")
+        btn_close = QPushButton("Close")
         btn_close.clicked.connect(self.accept)
         row.addWidget(btn_close)
         lay.addLayout(row)
@@ -44,5 +44,5 @@ class EngineStatusDialog(QDialog):
                     lines.append(f"     {subline}")
             lines.append("")
         if not lines:
-            lines = ["Geen engines geregistreerd."]
+            lines = ["No engines registered."]
         self.txt.setPlainText("\n".join(lines))

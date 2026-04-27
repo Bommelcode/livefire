@@ -49,13 +49,13 @@ def build_splash_pixmap() -> QPixmap:
     p.setFont(font)
     p.setPen(QColor("#3aa2e6"))
     p.drawText(QRect(0, 388, SPLASH_W, 20),
-               Qt.AlignmentFlag.AlignCenter, f"versie {APP_VERSION}")
+               Qt.AlignmentFlag.AlignCenter, f"version {APP_VERSION}")
     # Subtitel
     font.setPointSize(9)
     p.setFont(font)
     p.setPen(QColor("#9a9a9a"))
     p.drawText(QRect(0, 430, SPLASH_W, 16),
                Qt.AlignmentFlag.AlignCenter,
-               "Cue-based playback voor live events")
+               "Cue-based playback for live events")
     p.end()
     return pm

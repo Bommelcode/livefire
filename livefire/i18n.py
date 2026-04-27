@@ -13,7 +13,7 @@ widgets te flowen — daar voorkomen we Qt's signal-spam mee.
 
 from __future__ import annotations
 
-LANGUAGE: str = "nl"
+LANGUAGE: str = "en"
 
 # Talen die in de UI keuzelijst verschijnen.
 SUPPORTED: list[tuple[str, str]] = [

@@ -12,7 +12,7 @@ from PyQt6.QtGui import QFont, QColor, QIcon, QPixmap
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QDoubleSpinBox, QSpinBox,
     QComboBox, QPlainTextEdit, QGroupBox, QScrollArea, QPushButton, QFileDialog,
-    QCheckBox, QHBoxLayout, QLabel,
+    QCheckBox, QHBoxLayout, QLabel, QToolButton, QButtonGroup,
 )
 
 from ..cues import Cue, CueType, ContinueMode, PresentationAction
@@ -24,13 +24,126 @@ from .video_preview import VideoPreviewWidget
 
 
 def _swatch_icon(hex_color: str, size: int = 14) -> QIcon:
-    """Maak een vierkant kleur-swatch als QIcon voor de dropdown."""
+    """Maak een vierkant kleur-swatch als QIcon (bv. voor menus of icons)."""
     pm = QPixmap(size, size)
     if hex_color:
         pm.fill(QColor(hex_color))
     else:
-        pm.fill(QColor(0, 0, 0, 0))  # transparant voor "Geen"
+        pm.fill(QColor(0, 0, 0, 0))  # transparant voor "None"
     return QIcon(pm)
+
+
+class _ColorSwatchPicker(QWidget):
+    """Rij kleine klikbare kleurvierkantjes — vervangt een dropdown waar
+    enkel een kleur uit een vaste palette gekozen wordt. De swatches
+    staan naast elkaar; de actieve swatch krijgt een witte ring zodat
+    ie er meteen uitspringt op een donker thema.
+
+    Eerste swatch is altijd "None" (lege hex), zichtbaar gemaakt met een
+    diagonale streep zodat het verschil met écht zwart duidelijk blijft.
+
+    API:
+      ``current_color()``  → hex-string (lege string = geen kleur)
+      ``set_current(hex)`` → selecteer voor display
+      ``color_changed``    → pyqtSignal(str), fired bij user-klik
+    """
+
+    color_changed = pyqtSignal(str)
+
+    _SWATCH_SIZE = 18
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._current: str = ""
+        self._buttons: dict[str, QToolButton] = {}
+        # autoExclusive op losse buttons werkt niet zonder QButtonGroup
+        # — anders blijven meerdere checked als je rondklikt.
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(3)
+
+        for label, hex_color in CUE_COLORS:
+            btn = QToolButton(self)
+            btn.setCheckable(True)
+            btn.setFixedSize(self._SWATCH_SIZE, self._SWATCH_SIZE)
+            btn.setToolTip(label)
+            btn.setStyleSheet(self._stylesheet_for(hex_color, checked=False))
+            btn.clicked.connect(
+                lambda _checked, hc=hex_color: self._on_pick(hc)
+            )
+            self._group.addButton(btn)
+            self._buttons[hex_color] = btn
+            lay.addWidget(btn)
+
+        lay.addStretch(1)
+
+    # ---- public API --------------------------------------------------------
+
+    def current_color(self) -> str:
+        return self._current
+
+    def set_current(self, hex_color: str) -> None:
+        """Selecteer een kleur zonder color_changed te emitten. Een kleur
+        die niet in de standaard-palette zit wordt als losse swatch aan
+        het einde toegevoegd (custom-from-workspace fallback)."""
+        if hex_color and hex_color not in self._buttons:
+            self._add_custom_swatch(hex_color)
+        self._current = hex_color
+        for hc, btn in self._buttons.items():
+            checked = (hc == hex_color)
+            btn.setChecked(checked)
+            btn.setStyleSheet(self._stylesheet_for(hc, checked=checked))
+
+    # ---- intern ------------------------------------------------------------
+
+    def _on_pick(self, hex_color: str) -> None:
+        if hex_color == self._current:
+            # Hertekenen voor het geval autoExclusive 't visueel niet
+            # gesynchroniseerd heeft.
+            self._buttons[hex_color].setStyleSheet(
+                self._stylesheet_for(hex_color, checked=True)
+            )
+            return
+        self.set_current(hex_color)
+        self.color_changed.emit(hex_color)
+
+    def _add_custom_swatch(self, hex_color: str) -> None:
+        """Voeg een onbekende workspace-kleur toe aan het einde van de rij."""
+        btn = QToolButton(self)
+        btn.setCheckable(True)
+        btn.setFixedSize(self._SWATCH_SIZE, self._SWATCH_SIZE)
+        btn.setToolTip(f"Custom ({hex_color})")
+        btn.setStyleSheet(self._stylesheet_for(hex_color, checked=False))
+        btn.clicked.connect(lambda _c, hc=hex_color: self._on_pick(hc))
+        self._group.addButton(btn)
+        self._buttons[hex_color] = btn
+        # Insert vóór de stretch — de stretch hangt aan het einde.
+        lay = self.layout()
+        lay.insertWidget(lay.count() - 1, btn)
+
+    @staticmethod
+    def _stylesheet_for(hex_color: str, *, checked: bool) -> str:
+        """Stylesheet per swatch: gevulde achtergrond + ring bij selectie.
+        'None' (lege hex) toont een diagonale streep i.p.v. een vlak zwart
+        vierkant zodat 't verschil met echt-zwart duidelijk blijft."""
+        ring = "border: 2px solid #ffffff;" if checked else "border: 1px solid #555555;"
+        if hex_color:
+            bg = f"background-color: {hex_color};"
+        else:
+            # Diagonale streep over een neutrale grijze achtergrond,
+            # opgebouwd via een qlineargradient — geen extra image-asset
+            # nodig.
+            bg = (
+                "background: qlineargradient("
+                "x1:0, y1:0, x2:1, y2:1, "
+                "stop:0 #2a2a2a, stop:0.45 #2a2a2a, "
+                "stop:0.46 #d9534f, stop:0.54 #d9534f, "
+                "stop:0.55 #2a2a2a, stop:1 #2a2a2a);"
+            )
+        return f"QToolButton {{ {bg} {ring} border-radius: 3px; }}"
 
 
 class InspectorWidget(QWidget):
@@ -82,9 +195,9 @@ class InspectorWidget(QWidget):
         lay.setSpacing(8)
 
         # Header
-        self.header = QLabel("Geen cue geselecteerd")
+        self.header = QLabel("No cue selected")
         f = QFont()
-        f.setPointSize(11)
+        f.setPointSize(10)  # 1pt boven base (Segoe UI 9pt) — VS-stijl hiërarchie
         f.setBold(True)
         self.header.setFont(f)
         lay.addWidget(self.header)
@@ -104,9 +217,9 @@ class InspectorWidget(QWidget):
             "border-radius: 4px;"
         )
         self.banner_pro.setText(
-            "🔒 Dit cue-type vereist een Pro-licentie om bij GO af te "
-            "spelen. Bouwen mag wel — open Help → Licentie… om te "
-            "activeren of een licentie aan te schaffen."
+            "🔒 This cue type requires a Pro license to fire on GO. "
+            "Building is allowed — open Help → License… to activate or "
+            "purchase a license."
         )
         self.banner_pro.setVisible(False)
         lay.addWidget(self.banner_pro)
@@ -118,52 +231,49 @@ class InspectorWidget(QWidget):
         grp_basic = QGroupBox(t("group.general"))
         form = QFormLayout(grp_basic)
         self.ed_number = QLineEdit()
-        self.ed_number.setToolTip("Cue-nummer zoals getoond in de cuelist. Vrij tekstveld (mag letters bevatten).")
+        self.ed_number.setToolTip("Cue number as shown in the cuelist. Free text field (may contain letters).")
         self.ed_name = QLineEdit()
-        self.ed_name.setToolTip("Korte beschrijving voor jezelf. Heeft geen invloed op playback.")
+        self.ed_name.setToolTip("Short description for yourself. Does not affect playback.")
         self.cb_type = QComboBox()
         # Toon vertaalde labels, maar bewaar de originele cue-type-string als
         # data zodat workspaces compatibel blijven.
         for ct in CueType.ALL:
             self.cb_type.addItem(t(f"cuetype.{ct}"), ct)
         self.cb_type.setToolTip(
-            "Type van de cue:\n"
-            "• Audio — speelt een bestand\n"
-            "• Fade — verandert het volume van een andere audio-cue\n"
-            "• Wait — pauzeert voor een bepaalde tijd\n"
-            "• Stop — stopt een specifieke cue of alles\n"
-            "• Start — triggert een andere cue\n"
+            "Cue type:\n"
+            "• Audio — play a file\n"
+            "• Fade — change the volume of another audio cue\n"
+            "• Wait — pause for a set duration\n"
+            "• Stop — stop a specific cue or everything\n"
+            "• Start — trigger another cue\n"
             "• Group — container (placeholder in v0.3)\n"
-            "• Memo — alleen notitie, geen actie"
+            "• Memo — note only, no action"
         )
-        self.cb_color = QComboBox()
-        self.cb_color.setIconSize(QSize(14, 14))
-        self.cb_color.setToolTip("Kleurtag die in de cuelist als balk zichtbaar wordt.")
-        for label, hex_color in CUE_COLORS:
-            self.cb_color.addItem(_swatch_icon(hex_color), label, hex_color)
-        form.addRow("Nummer", self.ed_number)
+        self.cb_color = _ColorSwatchPicker()
+        self.cb_color.setToolTip("Color tag shown as a bar in the cuelist.")
+        form.addRow("Number", self.ed_number)
         form.addRow("Type", self.cb_type)
-        form.addRow("Naam", self.ed_name)
-        form.addRow("Kleur", self.cb_color)
+        form.addRow("Name", self.ed_name)
+        form.addRow("Color", self.cb_color)
         lay.addWidget(grp_basic)
 
         # ---- Timing --------------------------------------------------------
         grp_timing = QGroupBox(t("group.timing"))
         fl = QFormLayout(grp_timing)
         self.sp_pre = self._spin_seconds()
-        self.sp_pre.setToolTip("Wachttijd tussen GO en het daadwerkelijk starten van deze cue.")
+        self.sp_pre.setToolTip("Wait time between GO and the actual start of this cue.")
         self.sp_dur = self._spin_seconds(max_val=36000.0)
-        self.sp_dur.setToolTip("Hoe lang de actie duurt. Voor Audio: 0 = speel tot het bestand op is.")
+        self.sp_dur.setToolTip("How long the action lasts. For Audio: 0 = play until the file ends.")
         self.sp_post = self._spin_seconds()
-        self.sp_post.setToolTip("Wachttijd nadat de actie klaar is, vóór de cue 'finished' wordt.")
+        self.sp_post.setToolTip("Wait time after the action completes, before the cue becomes 'finished'.")
         self.cb_continue = QComboBox()
         for k in ContinueMode.KEYS:
             self.cb_continue.addItem(ContinueMode.label(k), k)
         self.cb_continue.setToolTip(
-            "Hoe de playback doorgaat:\n"
-            "• Do Not Continue — stopt na deze cue\n"
-            "• Auto-Continue — volgende cue start zodra deze z'n actie start\n"
-            "• Auto-Follow — volgende cue start nadat deze klaar is"
+            "How playback continues:\n"
+            "• Do Not Continue — stops after this cue\n"
+            "• Auto-Continue — next cue starts as soon as this one starts its action\n"
+            "• Auto-Follow — next cue starts after this one is finished"
         )
         fl.addRow("Pre-wait (s)", self.sp_pre)
         fl.addRow("Duration (s)", self.sp_dur)
@@ -176,37 +286,36 @@ class InspectorWidget(QWidget):
         al = QFormLayout(self.grp_audio)
         path_row = QHBoxLayout()
         self.ed_path = QLineEdit()
-        self.ed_path.setToolTip("Pad naar het audio-bestand (wav/mp3/flac/ogg/aiff).")
-        self.btn_browse = QPushButton("Bladeren…")
-        self.btn_browse.setToolTip("Open een bestand-dialog om een audio-bestand te kiezen.")
+        self.ed_path.setToolTip("Path to the audio file (wav/mp3/flac/ogg/aiff).")
+        self.btn_browse = QPushButton("Browse…")
+        self.btn_browse.setToolTip("Open a file dialog to choose an audio file.")
         self.btn_browse.clicked.connect(self._browse_file)
         path_row.addWidget(self.ed_path)
         path_row.addWidget(self.btn_browse)
         path_container = QWidget()
         path_container.setLayout(path_row)
-        al.addRow("Bestand", path_container)
+        al.addRow("File", path_container)
         self.sp_volume = self._spin(-96.0, 12.0, 0.1, " dB")
-        self.sp_volume.setToolTip("Afspeelvolume in dB. 0 dB = origineel, −6 dB = halve amplitude.")
+        self.sp_volume.setToolTip("Playback volume in dB. 0 dB = original, −6 dB = half amplitude.")
         self.sp_loops = QSpinBox()
         self.sp_loops.setRange(0, 9999)
         self.sp_loops.setSpecialValueText("∞")
-        self.sp_loops.setToolTip("Hoe vaak het bestand afspelen. 0 = oneindig loopen.")
+        self.sp_loops.setToolTip("How many times to play the file. 0 = loop indefinitely.")
         self.sp_start = self._spin_seconds()
-        self.sp_start.setToolTip("Seconden die je vanaf het begin van het bestand overslaat.")
+        self.sp_start.setToolTip("Seconds to skip from the beginning of the file.")
         self.sp_end = self._spin_seconds()
-        self.sp_end.setToolTip("Seconden die je van het einde van het bestand afsnijdt.")
+        self.sp_end.setToolTip("Seconds to trim from the end of the file.")
         self.sp_fade_in = self._spin_seconds(max_val=600.0)
-        self.sp_fade_in.setToolTip("Fade-in tijd. Cue start op stilte en rampt naar het ingestelde volume.")
+        self.sp_fade_in.setToolTip("Fade-in time. Cue starts silent and ramps to the set volume.")
         self.sp_fade_out = self._spin_seconds(max_val=600.0)
         self.sp_fade_out.setToolTip(
-            "Fade-out tijd aan het einde van de cue. Bij AUTO_FOLLOW start de "
-            "volgende cue gelijktijdig met de fade-out — dat geeft een natuurlijke "
-            "crossfade."
+            "Fade-out time at the end of the cue. With AUTO_FOLLOW the next cue "
+            "starts simultaneously with the fade-out — giving a natural crossfade."
         )
         al.addRow("Volume", self.sp_volume)
         al.addRow("Loops (0 = ∞)", self.sp_loops)
-        al.addRow("Start-offset (s)", self.sp_start)
-        al.addRow("Eind-offset (s)", self.sp_end)
+        al.addRow("Start offset (s)", self.sp_start)
+        al.addRow("End offset (s)", self.sp_end)
         al.addRow("Fade-in (s)", self.sp_fade_in)
         al.addRow("Fade-out (s)", self.sp_fade_out)
         lay.addWidget(self.grp_audio)
@@ -216,26 +325,26 @@ class InspectorWidget(QWidget):
         vl = QFormLayout(self.grp_video)
         video_path_row = QHBoxLayout()
         self.ed_video_path = QLineEdit()
-        self.ed_video_path.setToolTip("Pad naar het video-bestand.")
-        self.btn_browse_video = QPushButton("Bladeren…")
-        self.btn_browse_video.setToolTip("Kies een videobestand.")
+        self.ed_video_path.setToolTip("Path to the video file.")
+        self.btn_browse_video = QPushButton("Browse…")
+        self.btn_browse_video.setToolTip("Choose a video file.")
         self.btn_browse_video.clicked.connect(self._browse_video)
         video_path_row.addWidget(self.ed_video_path)
         video_path_row.addWidget(self.btn_browse_video)
         vpc = QWidget()
         vpc.setLayout(video_path_row)
-        vl.addRow("Bestand", vpc)
+        vl.addRow("File", vpc)
         self.cb_video_screen = QComboBox()
         self.cb_video_screen.setToolTip(
-            "Monitor waarop deze cue fullscreen wordt weergegeven."
+            "Monitor on which this cue is displayed fullscreen."
         )
         for idx, label in list_screens():
             self.cb_video_screen.addItem(label, idx)
-        vl.addRow("Output-scherm", self.cb_video_screen)
+        vl.addRow("Output screen", self.cb_video_screen)
         self.sp_video_fade_in = self._spin_seconds(max_val=600.0)
-        self.sp_video_fade_in.setToolTip("Fade-in vanuit zwart.")
+        self.sp_video_fade_in.setToolTip("Fade in from black.")
         self.sp_video_fade_out = self._spin_seconds(max_val=600.0)
-        self.sp_video_fade_out.setToolTip("Fade-to-black aan het einde van de cue.")
+        self.sp_video_fade_out.setToolTip("Fade to black at the end of the cue.")
         vl.addRow("Fade-in (s)", self.sp_video_fade_in)
         vl.addRow("Fade-out (s)", self.sp_video_fade_out)
         # Volume voor de audio-track van de video. Range −96..0 dB; libVLC's
@@ -243,16 +352,16 @@ class InspectorWidget(QWidget):
         # we tonen geen + waarden.
         self.sp_video_volume = self._spin(-96.0, 0.0, 0.1, " dB")
         self.sp_video_volume.setToolTip(
-            "Afspeelvolume van de video-audio in dB. 0 dB = origineel, −6 dB = halve amplitude."
+            "Playback volume of the video audio in dB. 0 dB = original, −6 dB = half amplitude."
         )
         vl.addRow("Volume", self.sp_video_volume)
         # Wat blijft er fullscreen staan na deze cue tot een volgende start?
         # Standaard zwart; aangevinkt = laatste frame zichtbaar (paused).
-        self.chk_video_last_frame = QCheckBox("Bewaar laatste frame na einde")
+        self.chk_video_last_frame = QCheckBox("Keep last frame after end")
         self.chk_video_last_frame.setToolTip(
-            "Aan: na het einde van deze cue blijft het laatste frame fullscreen "
-            "staan tot een volgende cue start.\n"
-            "Uit (default): zwart fullscreen tussen cues — geen UI-flits."
+            "On: after this cue ends, the last frame stays fullscreen until "
+            "the next cue starts.\n"
+            "Off (default): black fullscreen between cues — no UI flash."
         )
         vl.addRow("", self.chk_video_last_frame)
 
@@ -261,11 +370,11 @@ class InspectorWidget(QWidget):
         vl.addRow(self.video_preview)
 
         self.sp_video_in = self._spin_seconds(max_val=36000.0)
-        self.sp_video_in.setToolTip("In-punt (vanaf welk moment wordt afgespeeld).")
+        self.sp_video_in.setToolTip("In point (the moment from which playback starts).")
         self.sp_video_out = self._spin_seconds(max_val=36000.0)
-        self.sp_video_out.setToolTip("Uit-punt (waar de cue eindigt). 0 = tot einde bestand.")
-        vl.addRow("In-punt (s)", self.sp_video_in)
-        vl.addRow("Uit-punt (s)", self.sp_video_out)
+        self.sp_video_out.setToolTip("Out point (where the cue ends). 0 = play to end of file.")
+        vl.addRow("In point (s)", self.sp_video_in)
+        vl.addRow("Out point (s)", self.sp_video_out)
 
         # Bidirectionele sync tussen timeline (drag) en spinboxes (veld).
         self.video_preview.in_point_changed.connect(self._set_video_in_from_timeline)
@@ -283,29 +392,29 @@ class InspectorWidget(QWidget):
         il = QFormLayout(self.grp_image)
         image_path_row = QHBoxLayout()
         self.ed_image_path = QLineEdit()
-        self.ed_image_path.setToolTip("Pad naar het afbeeldingsbestand (PNG/JPG/...).")
-        self.btn_browse_image = QPushButton("Bladeren…")
-        self.btn_browse_image.setToolTip("Kies een afbeelding.")
+        self.ed_image_path.setToolTip("Path to the image file (PNG/JPG/...).")
+        self.btn_browse_image = QPushButton("Browse…")
+        self.btn_browse_image.setToolTip("Choose an image.")
         self.btn_browse_image.clicked.connect(self._browse_image)
         image_path_row.addWidget(self.ed_image_path)
         image_path_row.addWidget(self.btn_browse_image)
         ipc = QWidget()
         ipc.setLayout(image_path_row)
-        il.addRow("Bestand", ipc)
+        il.addRow("File", ipc)
         self.cb_image_screen = QComboBox()
         self.cb_image_screen.setToolTip(
-            "Monitor waarop deze afbeelding fullscreen wordt weergegeven."
+            "Monitor on which this image is displayed fullscreen."
         )
         for idx, label in list_screens():
             self.cb_image_screen.addItem(label, idx)
-        il.addRow("Output-scherm", self.cb_image_screen)
+        il.addRow("Output screen", self.cb_image_screen)
         self.sp_image_fade_in = self._spin_seconds(max_val=600.0)
-        self.sp_image_fade_in.setToolTip("Fade-in vanuit zwart.")
+        self.sp_image_fade_in.setToolTip("Fade in from black.")
         self.sp_image_fade_out = self._spin_seconds(max_val=600.0)
         self.sp_image_fade_out.setToolTip(
-            "Fade-out aan het einde. Alleen relevant als Duur > 0; bij Duur "
-            "= 0 blijft de afbeelding staan tot een volgende image-cue op "
-            "hetzelfde scherm hem vervangt of een Stop-cue 'm afsluit."
+            "Fade-out at the end. Only relevant if Duration > 0; with "
+            "Duration = 0 the image stays until another image cue on the "
+            "same screen replaces it or a Stop cue closes it."
         )
         il.addRow("Fade-in (s)", self.sp_image_fade_in)
         il.addRow("Fade-out (s)", self.sp_image_fade_out)
@@ -318,28 +427,28 @@ class InspectorWidget(QWidget):
         for key in PresentationAction.ALL:
             self.cb_ppt_action.addItem(PresentationAction.LABELS[key], key)
         self.cb_ppt_action.setToolTip(
-            "Welke actie deze cue uitvoert op PowerPoint. 'Open' laadt het\n"
-            "bestand en start de slideshow; verdere cues sturen Volgende /\n"
-            "Vorige / Goto / Sluit naar de actieve presentatie."
+            "What action this cue performs on PowerPoint. 'Open' loads the\n"
+            "file and starts the slideshow; further cues send Next /\n"
+            "Previous / Go To / Close to the active presentation."
         )
-        ppl.addRow("Actie", self.cb_ppt_action)
+        ppl.addRow("Action", self.cb_ppt_action)
 
         ppt_path_row = QHBoxLayout()
         self.ed_ppt_path = QLineEdit()
-        self.ed_ppt_path.setToolTip("Pad naar het .pptx-bestand (alleen voor 'Open').")
-        self.btn_browse_ppt = QPushButton("Bladeren…")
+        self.ed_ppt_path.setToolTip("Path to the .pptx file (only for 'Open').")
+        self.btn_browse_ppt = QPushButton("Browse…")
         self.btn_browse_ppt.clicked.connect(self._browse_ppt)
         ppt_path_row.addWidget(self.ed_ppt_path)
         ppt_path_row.addWidget(self.btn_browse_ppt)
         ppt_path_container = QWidget()
         ppt_path_container.setLayout(ppt_path_row)
-        ppl.addRow("Bestand", ppt_path_container)
+        ppl.addRow("File", ppt_path_container)
         self._ppt_path_row = ppt_path_container  # voor show/hide
 
         self.sp_ppt_slide = QSpinBox()
         self.sp_ppt_slide.setRange(1, 9999)
-        self.sp_ppt_slide.setToolTip("Doel-slide (alleen voor 'Ga naar slide').")
-        ppl.addRow("Slide-nummer", self.sp_ppt_slide)
+        self.sp_ppt_slide.setToolTip("Target slide (only for 'Go to slide').")
+        ppl.addRow("Slide number", self.sp_ppt_slide)
         self._ppt_form = ppl
 
         lay.addWidget(self.grp_presentation)
@@ -350,7 +459,7 @@ class InspectorWidget(QWidget):
         self.ed_net_address = QLineEdit()
         self.ed_net_address.setPlaceholderText("/companion/page/1/button/1")
         self.ed_net_address.setToolTip(
-            "OSC-address. Moet met / beginnen.\n"
+            "OSC address. Must start with /.\n"
             "Companion: /companion/page/<P>/button/<B>\n"
             "QLab:      /cue/<nr>/start"
         )
@@ -360,13 +469,13 @@ class InspectorWidget(QWidget):
         self.ed_net_host = QLineEdit()
         self.ed_net_host.setPlaceholderText("127.0.0.1")
         self.ed_net_host.setToolTip(
-            "Hostnaam of IP-adres van de ontvanger."
+            "Hostname or IP address of the receiver."
         )
         self.sp_net_port = QSpinBox()
         self.sp_net_port.setRange(1, 65535)
         self.sp_net_port.setValue(53000)
         self.sp_net_port.setToolTip(
-            "UDP-poort van de ontvanger.\n"
+            "UDP port of the receiver.\n"
             "Companion: 12321 (default)\n"
             "QLab:      53000 (default)"
         )
@@ -380,21 +489,21 @@ class InspectorWidget(QWidget):
         self.ed_net_args = QLineEdit()
         self.ed_net_args.setPlaceholderText("1, 0.5, \"hello world\"")
         self.ed_net_args.setToolTip(
-            "OSC-arguments, comma-gescheiden.\n"
-            "Token-types: int → float → string (in die volgorde).\n"
-            "Quote met \" of ' om strings met spaties of komma's te bewaren.\n"
-            "Voorbeelden:\n"
+            "OSC arguments, comma-separated.\n"
+            "Token types: int → float → string (in that order).\n"
+            "Quote with \" or ' to preserve strings with spaces or commas.\n"
+            "Examples:\n"
             "  channel, 1, 0.5\n"
             "  \"hello world\", 42\n"
-            "Leeg = address zonder args."
+            "Empty = address without args."
         )
         nl.addRow("Args", self.ed_net_args)
 
         self.btn_net_send = QPushButton(t("btn.test_send"))
         self.btn_net_send.setToolTip(
-            "Verstuur dit OSC-bericht direct naar de host:port "
-            "zonder de cue te draaien — handig voor het instellen "
-            "van Companion-knoppen of QLab-cues."
+            "Send this OSC message directly to host:port without running "
+            "the cue — useful when configuring Companion buttons or QLab "
+            "cues."
         )
         self.btn_net_send.clicked.connect(self._test_send_osc)
         net_btn_row = QHBoxLayout()
@@ -410,8 +519,8 @@ class InspectorWidget(QWidget):
         self.grp_wait = QGroupBox(t("group.wait"))
         wl = QFormLayout(self.grp_wait)
         self.sp_wait = self._spin_seconds(max_val=3600.0)
-        self.sp_wait.setToolTip("Hoe lang deze Wait-cue pauzeert voor de playback doorgaat.")
-        wl.addRow("Wacht-duur (s)", self.sp_wait)
+        self.sp_wait.setToolTip("How long this Wait cue pauses before playback continues.")
+        wl.addRow("Wait duration (s)", self.sp_wait)
         lay.addWidget(self.grp_wait)
 
         # ---- Target (Stop / Fade / Start) ---------------------------------
@@ -419,16 +528,16 @@ class InspectorWidget(QWidget):
         tl = QFormLayout(self.grp_target)
         self.cb_target = QComboBox()
         self.cb_target.setToolTip(
-            "De cue waar deze Stop/Fade/Start op werkt. Voor Stop: leeg = alles stoppen."
+            "The cue this Stop/Fade/Start acts on. For Stop: empty = stop everything."
         )
-        tl.addRow("Target-cue", self.cb_target)
+        tl.addRow("Target cue", self.cb_target)
         self.sp_fade_target = self._spin(-96.0, 12.0, 0.1, " dB")
-        self.sp_fade_target.setToolTip("Het volume waar de Fade naartoe gaat (voor Fade-cues).")
-        self.chk_fade_stops = QCheckBox("Target stoppen na fade")
+        self.sp_fade_target.setToolTip("The volume the Fade targets (for Fade cues).")
+        self.chk_fade_stops = QCheckBox("Stop target after fade")
         self.chk_fade_stops.setToolTip(
-            "Zet aan om de target-cue te stoppen zodra de fade-out −∞ dB raakt."
+            "Enable to stop the target cue as soon as the fade-out reaches −∞ dB."
         )
-        tl.addRow("Fade naar", self.sp_fade_target)
+        tl.addRow("Fade to", self.sp_fade_target)
         tl.addRow("", self.chk_fade_stops)
         lay.addWidget(self.grp_target)
 
@@ -437,22 +546,22 @@ class InspectorWidget(QWidget):
         trg = QFormLayout(self.grp_triggers)
         osc_row = QHBoxLayout()
         self.ed_trigger_osc = QLineEdit()
-        self.ed_trigger_osc.setPlaceholderText("/livefire/go/intro — leeg = geen trigger")
+        self.ed_trigger_osc.setPlaceholderText("/livefire/go/intro — empty = no trigger")
         self.ed_trigger_osc.setToolTip(
-            "OSC-address dat deze cue afvuurt wanneer het binnenkomt op de OSC-input "
-            "poort (instelbaar in Voorkeuren). Leeg = geen externe trigger."
+            "OSC address that fires this cue when received on the OSC-input "
+            "port (configurable in Preferences). Empty = no external trigger."
         )
         self.btn_learn_osc = QPushButton("Learn…")
         self.btn_learn_osc.setToolTip(
-            "Wacht op de eerstvolgende OSC-message en vul het address automatisch in. "
-            "OSC-input moet aan staan."
+            "Wait for the next OSC message and fill in the address automatically. "
+            "OSC input must be enabled."
         )
         self.btn_learn_osc.clicked.connect(self._learn_osc)
         osc_row.addWidget(self.ed_trigger_osc)
         osc_row.addWidget(self.btn_learn_osc)
         osc_container = QWidget()
         osc_container.setLayout(osc_row)
-        trg.addRow("OSC-address", osc_container)
+        trg.addRow("OSC address", osc_container)
         lay.addWidget(self.grp_triggers)
 
         # ---- Notities ------------------------------------------------------
@@ -460,7 +569,7 @@ class InspectorWidget(QWidget):
         nl = QVBoxLayout(grp_notes)
         self.ed_notes = QPlainTextEdit()
         self.ed_notes.setMinimumHeight(60)
-        self.ed_notes.setToolTip("Vrije notities voor jezelf. Zichtbaar in Memo-cues.")
+        self.ed_notes.setToolTip("Free notes for yourself. Shown in Memo cues.")
         nl.addWidget(self.ed_notes)
         lay.addWidget(grp_notes)
 
@@ -473,7 +582,7 @@ class InspectorWidget(QWidget):
         self._field_map: dict = {
             self.ed_number:      ("cue_number",         lambda: self.ed_number.text()),
             self.ed_name:        ("name",               lambda: self.ed_name.text()),
-            self.cb_color:       ("color",              lambda: self.cb_color.currentData() or ""),
+            self.cb_color:       ("color",              lambda: self.cb_color.current_color()),
             self.sp_pre:         ("pre_wait",           lambda: self.sp_pre.value()),
             self.sp_dur:         ("duration",           lambda: self.sp_dur.value()),
             self.sp_post:        ("post_wait",          lambda: self.sp_post.value()),
@@ -538,7 +647,7 @@ class InspectorWidget(QWidget):
         self.cb_type.currentIndexChanged.connect(self._on_type_change)
         self.cb_continue.currentIndexChanged.connect(self._on_any_change)
         self.cb_target.currentIndexChanged.connect(self._on_any_change)
-        self.cb_color.currentIndexChanged.connect(self._on_any_change)
+        self.cb_color.color_changed.connect(self._on_any_change)
         self.cb_video_screen.currentIndexChanged.connect(self._on_any_change)
         self.cb_image_screen.currentIndexChanged.connect(self._on_any_change)
         self.cb_ppt_action.currentIndexChanged.connect(self._on_any_change)
@@ -571,9 +680,9 @@ class InspectorWidget(QWidget):
         self._updating = True
         current = self.cb_target.currentData()
         self.cb_target.clear()
-        self.cb_target.addItem("— alles / geen —", "")
+        self.cb_target.addItem("— all / none —", "")
         for c in self.workspace.cues:
-            label = f"{c.cue_number or '?'}: {c.name or '(naamloos)'} [{c.cue_type}]"
+            label = f"{c.cue_number or '?'}: {c.name or '(untitled)'} [{c.cue_type}]"
             if self.cue is not None and c.id == self.cue.id:
                 continue  # niet naar jezelf verwijzen
             self.cb_target.addItem(label, c.id)
@@ -593,7 +702,7 @@ class InspectorWidget(QWidget):
         self.cue = self.cues[0] if self.cues else None
 
         if not self.cues:
-            self.header.setText("Geen cue geselecteerd")
+            self.header.setText("No cue selected")
             self.banner_pro.setVisible(False)
             self.grp_audio.setVisible(False)
             self.grp_video.setVisible(False)
@@ -611,9 +720,9 @@ class InspectorWidget(QWidget):
         multi = len(self.cues) > 1
 
         if multi:
-            self.header.setText(f"{len(self.cues)} cues geselecteerd")
+            self.header.setText(f"{len(self.cues)} cues selected")
         else:
-            self.header.setText(f"{cue.cue_number or '?'}: {cue.name or '(naamloos)'}")
+            self.header.setText(f"{cue.cue_number or '?'}: {cue.name or '(untitled)'}")
 
         # Toon waarden van de eerste cue — bulk-edits van andere velden
         # overschrijven alleen het gewijzigde veld, niet de rest.
@@ -761,25 +870,28 @@ class InspectorWidget(QWidget):
         value = getter()
         # Per-cue velden: alleen op de eerste (bij single-select = de enige).
         targets = self.cues[:1] if attr in self._PER_CUE_ATTRS else self.cues
-        for c in targets:
-            setattr(c, attr, value)
-        self.workspace.dirty = True
-        self.cue_changed.emit(self.cues[0])
+        target_ids = [c.id for c in targets]
+        # Skip als geen enkele cue echt verandert — anders krijg je een
+        # undo-entry zonder mutatie (bv. spinbox die op zelfde value blijft).
+        if all(getattr(c, attr, None) == value for c in targets):
+            return
+        sink = getattr(self, "command_sink", None)
+        if sink is not None:
+            # SetCueFieldCmd.mergeWith zorgt dat opeenvolgende edits op
+            # hetzelfde (cue-set, veld) als één undo-stap tellen.
+            sink.push_set_field(target_ids, attr, value)
+        else:
+            # Fallback (tests): direct muteren.
+            for c in targets:
+                setattr(c, attr, value)
+            self.workspace.dirty = True
+            self.cue_changed.emit(self.cues[0])
 
     def _select_color(self, hex_color: str) -> None:
-        """Selecteer de juiste preset in cb_color. Als hex_color geen preset is
-        (bv. geërfd uit oudere workspace), voeg hem tijdelijk toe als 'Aangepast'."""
-        idx = self.cb_color.findData(hex_color)
-        if idx < 0 and hex_color:
-            self.cb_color.addItem(
-                _swatch_icon(hex_color),
-                f"Aangepast ({hex_color})",
-                hex_color,
-            )
-            idx = self.cb_color.count() - 1
-        if idx < 0:
-            idx = 0  # "Geen"
-        self.cb_color.setCurrentIndex(idx)
+        """Activeer de juiste swatch. Een kleur die niet in CUE_COLORS zit
+        (bv. geërfd uit een oudere workspace) wordt door het swatch-
+        widget zelf als losse swatch achter de palette toegevoegd."""
+        self.cb_color.set_current(hex_color or "")
 
     def _on_video_duration_detected(self, seconds: float) -> None:
         """Preview ontdekte de file-duur; cache 'm op de cue zodat de cuelist
@@ -831,8 +943,8 @@ class InspectorWidget(QWidget):
 
     def _browse_ppt(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Kies presentatie", "",
-            "PowerPoint (*.pptx *.ppt *.pptm);;Alle bestanden (*)",
+            self, "Choose presentation", "",
+            "PowerPoint (*.pptx *.ppt *.pptm);;All files (*)",
         )
         if not path:
             return
@@ -849,8 +961,8 @@ class InspectorWidget(QWidget):
 
     def _browse_video(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Kies video-bestand", "",
-            "Video (*.mp4 *.mov *.avi *.mkv *.webm *.m4v);;Alle bestanden (*)",
+            self, "Choose video file", "",
+            "Video (*.mp4 *.mov *.avi *.mkv *.webm *.m4v);;All files (*)",
         )
         if path:
             # Zelfde auto-fill-naam logica als _browse_file, maar voor video.
@@ -868,8 +980,8 @@ class InspectorWidget(QWidget):
 
     def _browse_image(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Kies afbeelding", "",
-            "Afbeeldingen (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp);;Alle bestanden (*)",
+            self, "Choose image", "",
+            "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff *.gif *.webp);;All files (*)",
         )
         if not path:
             return
@@ -886,8 +998,8 @@ class InspectorWidget(QWidget):
 
     def _browse_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
-            self, "Kies audio-bestand", "",
-            "Audio (*.wav *.mp3 *.flac *.ogg *.aiff *.aif);;Alle bestanden (*)",
+            self, "Choose audio file", "",
+            "Audio (*.wav *.mp3 *.flac *.ogg *.aiff *.aif);;All files (*)",
         )
         if path:
             # Check vóór we het pad updaten of de naam auto-gegenereerd is.
@@ -924,8 +1036,8 @@ class InspectorWidget(QWidget):
         from ..engines.osc_out import parse_args
         if self.osc_out_engine is None:
             QMessageBox.warning(
-                self, "OSC-output niet beschikbaar",
-                "De OSC-output engine is niet aangesloten.",
+                self, "OSC output not available",
+                "The OSC-output engine is not connected.",
             )
             return
         addr = self.ed_net_address.text().strip()
@@ -934,7 +1046,7 @@ class InspectorWidget(QWidget):
         args = parse_args(self.ed_net_args.text())
         ok, err = self.osc_out_engine.send(host, port, addr, args)
         if not ok:
-            QMessageBox.warning(self, "OSC-versturen mislukt", err)
+            QMessageBox.warning(self, "OSC send failed", err)
             return
         # Compacte bevestiging in de statusbar van het hoofdvenster zou
         # mooi zijn; voor nu een korte tooltip-flash op de knop.
@@ -950,9 +1062,9 @@ class InspectorWidget(QWidget):
         if self.osc_engine is None or not self.osc_engine.running:
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.warning(
-                self, "OSC niet actief",
-                "De OSC-input engine draait niet. Zet 'm aan via Voorkeuren…"
-                " en stuur dan nogmaals.",
+                self, "OSC not active",
+                "The OSC-input engine is not running. Enable it via "
+                "Preferences… and try again.",
             )
             return
         dlg = OscLearnDialog(self.osc_engine, self)

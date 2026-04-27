@@ -74,7 +74,7 @@ class TimelineWidget(QWidget):
         if self._duration <= 0:
             p.setPen(QColor("#9a9a9a"))
             p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                       "Geen video geladen")
+                       "No video loaded")
             return
         # Active range (between in and out)
         x_in = self._time_to_x(self._in_s)

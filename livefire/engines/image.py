@@ -58,9 +58,10 @@ class ImageWindow(QWidget):
         # QPropertyAnimation-target kunnen wegtrekken → crash.
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
         self.setStyleSheet("background-color: black;")
-        # Begin op 0 zodat een eventuele fade-in geen 100%-flash op Windows
-        # geeft tussen show() en de eerste animation-frame.
-        self.setWindowOpacity(0.0)
+        # Opacity wordt door de engine vóór show() gezet: 0.0 voor fade-in,
+        # 1.0 voor harde cut. Hier 'm op 0.0 initialiseren zou bij een harde
+        # cut één frame van een transparant fullscreen-window opleveren —
+        # de mainwindow flitst dan even door.
 
         self._pixmap = QPixmap(file_path)
         self._label = QLabel(self)
@@ -174,20 +175,24 @@ class ImageEngine(QObject):
         if probe.isNull():
             return False, f"Kon afbeelding niet laden: {file_path}"
 
-        # Eerdere cue op zelfde scherm: laat 'm crossfaden in plaats van
-        # hard-killen.
+        # Eerdere cue op zelfde scherm: bepaal hoe we 'm afhandelen, maar
+        # voer de afhandeling pas uit nadat het nieuwe window getoond is.
+        # Anders is er bij een harde cut één frame waarin het oude window
+        # al weg is en het nieuwe nog niet getoond — de mainwindow flitst
+        # dan even door (zichtbaar bij snel doorklikken van slide naar
+        # slide via een PPT-import).
         prev_cue = self._screen_owner.get(screen_index)
+        prev_to_close: str | None = None
         if prev_cue and prev_cue != cue_id:
             prev_active = self._active.get(prev_cue)
             if prev_active is not None and not prev_active.stop_triggered:
                 if fade_in > 0:
-                    # Trigger prev z'n fade-out met de duur van onze
-                    # fade-in zodat ze ritmisch crossfaden.
+                    # Crossfade: trigger prev z'n fade-out alvast zodat hij
+                    # tegelijk met onze fade-in loopt.
                     self.stop_cue(prev_cue, fade_out=fade_in)
                 else:
-                    # Harde cut: prev meteen weg zodat z'n window-resources
-                    # niet onnodig in geheugen blijven hangen.
-                    self._hard_close(prev_cue)
+                    # Harde cut: pas sluiten ná onze show_fullscreen().
+                    prev_to_close = prev_cue
             # else: prev had al een eigen fade-out lopen — niet overrulen.
 
         # Sluit een eventuele lopende cue met hetzelfde id (re-fire).
@@ -195,9 +200,15 @@ class ImageEngine(QObject):
             self._hard_close(cue_id)
 
         win = ImageWindow(file_path, screen_index=screen_index)
-        # ImageWindow start op opacity=0; show eerst, daarna animeren of
-        # direct op 1 zetten. Dit voorkomt een 100%-flash op Windows.
+        # Opacity-startwaarde expliciet zetten vóór show() — voorkomt op
+        # Windows een transparant frame bij een harde cut.
+        win.setWindowOpacity(0.0 if fade_in > 0 else 1.0)
         win.show_fullscreen()
+
+        # Pas nu de vorige hard-killen — nieuwe window dekt al fullscreen
+        # over de mainwindow heen.
+        if prev_to_close is not None:
+            self._hard_close(prev_to_close)
 
         active = _Active(
             cue_id=cue_id,
@@ -218,8 +229,6 @@ class ImageEngine(QObject):
             anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
             anim.start()
             active.fade_in_anim = anim
-        else:
-            win.setWindowOpacity(1.0)
 
         if active.duration > 0:
             t = QTimer(self)

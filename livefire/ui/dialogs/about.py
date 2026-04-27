@@ -13,7 +13,7 @@ from ..splash import SPLASH_H, SPLASH_W, build_splash_pixmap
 
 def show_about(parent=None) -> None:
     dlg = QDialog(parent)
-    dlg.setWindowTitle(f"Over {APP_NAME}")
+    dlg.setWindowTitle(f"About {APP_NAME}")
     dlg.setFixedSize(SPLASH_W, SPLASH_H)
     # Geen WhatsThisHelp / context-help-knop, alleen sluit-X.
     dlg.setWindowFlags(

@@ -86,7 +86,7 @@ def build_stylesheet() -> str:
     arrow_down = _make_arrow_pixmap("down")
     return _STYLESHEET_TEMPLATE.format(
         BG_DARK=BG_DARK, BG_MID=BG_MID, BG_LIGHT=BG_LIGHT,
-        TEXT=TEXT, TEXT_DIM=TEXT_DIM, ACCENT=ACCENT,
+        TEXT=TEXT, TEXT_DIM=TEXT_DIM, ACCENT=ACCENT, ACCENT_ALT=ACCENT_ALT,
         OK=OK, ERR=ERR, SEL_BG=SEL_BG, BORDER=BORDER,
         ARROW_UP=arrow_up, ARROW_DOWN=arrow_down,
     )
@@ -96,8 +96,10 @@ _STYLESHEET_TEMPLATE = """
 QMainWindow, QWidget {{
     background-color: {BG_DARK};
     color: {TEXT};
-    font-family: "Segoe UI", "Inter", sans-serif;
-    font-size: 10pt;
+    /* Visual Studio-stijl UI-font: Segoe UI 9pt is de Windows-default
+       voor VS 2022 en VS Code. */
+    font-family: "Segoe UI", "Segoe UI Variable", "Tahoma", sans-serif;
+    font-size: 9pt;
 }}
 
 QToolBar {{
@@ -146,7 +148,7 @@ QHeaderView::section {{
 QPushButton {{
     background: {BG_LIGHT};
     border: 1px solid {BORDER};
-    padding: 6px 14px;
+    padding: 1px 10px;
     border-radius: 4px;
     color: {TEXT};
 }}
@@ -161,7 +163,7 @@ QPushButton#goButton {{
     font-weight: bold;
     min-width: 90px;
     min-height: 32px;
-    font-size: 11pt;
+    font-size: 10pt;
 }}
 QPushButton#goButton:hover {{ background: #4ca44c; }}
 
@@ -176,10 +178,16 @@ QPushButton#stopButton:hover {{ background: #c04a46; }}
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
     background: {BG_MID};
     border: 1px solid {BORDER};
-    padding: 4px 6px;
+    padding: 1px 6px;
     color: {TEXT};
-    min-height: 22px;
+    min-height: 14px;
     border-radius: 3px;
+    /* Forceer onze eigen selectie-kleur — anders pakt Qt de Windows-
+       systeemaccent en wordt geselecteerde tekst (bv. nadat een spinbox-
+       pijltje focus geeft + auto-select) in de Windows-themakleur
+       getoond, vaak oranje. */
+    selection-background-color: {SEL_BG};
+    selection-color: {TEXT};
 }}
 
 QComboBox::drop-down {{ border: none; }}
@@ -189,26 +197,28 @@ QComboBox:focus, QPlainTextEdit:focus {{
     border: 1px solid {ACCENT};
 }}
 
-/* Spinbox up/down knoppen. In Qt-stylesheet-mode tekent Qt géén native
-   pijl-glyph meer — we bouwen de driehoek zelf met border-triangles. */
+/* Spinbox up/down knoppen — naast elkaar rechts (down links, up rechts),
+   ieder full-height. In Qt-stylesheet-mode tekent Qt géén native pijl-
+   glyph meer; de driehoeken komen van _make_arrow_pixmap. */
 QSpinBox, QDoubleSpinBox {{
-    padding-right: 18px;
-}}
-QSpinBox::up-button, QDoubleSpinBox::up-button {{
-    subcontrol-origin: border;
-    subcontrol-position: top right;
-    width: 16px;
-    background: {BG_LIGHT};
-    border-left: 1px solid {BORDER};
-    border-top-right-radius: 3px;
+    padding-right: 36px;
 }}
 QSpinBox::down-button, QDoubleSpinBox::down-button {{
     subcontrol-origin: border;
-    subcontrol-position: bottom right;
-    width: 16px;
+    subcontrol-position: right;
+    right: 18px;
+    width: 18px;
     background: {BG_LIGHT};
     border-left: 1px solid {BORDER};
-    border-top: 1px solid {BORDER};
+}}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-origin: border;
+    subcontrol-position: right;
+    right: 0;
+    width: 18px;
+    background: {BG_LIGHT};
+    border-left: 1px solid {BORDER};
+    border-top-right-radius: 3px;
     border-bottom-right-radius: 3px;
 }}
 QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
@@ -246,6 +256,32 @@ QGroupBox::title {{
 
 QSplitter::handle {{ background: {BORDER}; }}
 
+/* Radio buttons — Qt's default-indicator is op een donker thema bijna
+   onzichtbaar (grijs-op-grijs). Custom indicator: ronde knop, en bij
+   selectie een oranje dot via een radial-gradient. */
+QRadioButton {{
+    spacing: 6px;
+}}
+QRadioButton::indicator {{
+    width: 14px;
+    height: 14px;
+    border-radius: 8px;
+}}
+QRadioButton::indicator:unchecked {{
+    background: {BG_MID};
+    border: 1px solid {BORDER};
+}}
+QRadioButton::indicator:checked {{
+    border: 1px solid {ACCENT_ALT};
+    background: qradialgradient(
+        cx:0.5, cy:0.5, radius:0.5,
+        stop:0 {ACCENT_ALT}, stop:0.45 {ACCENT_ALT},
+        stop:0.55 {BG_MID}, stop:1 {BG_MID}
+    );
+}}
+QRadioButton:disabled {{ color: {TEXT_DIM}; }}
+QRadioButton::indicator:disabled {{ border: 1px solid {BG_LIGHT}; }}
+
 QScrollBar:vertical {{
     background: {BG_DARK};
     width: 12px;
@@ -261,8 +297,21 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QMenu {{
     background: {BG_MID};
     border: 1px solid {BORDER};
+    padding: 4px 0;
+}}
+QMenu::item {{
+    /* Brede padding rechts zodat de sneltoets-aanduiding niet tegen
+       het label aankruipt; min-width geeft de menu-popup standaard
+       wat lucht zodat 'New Presentation Cue   Ctrl+9' niet botst. */
+    padding: 4px 32px 4px 18px;
+    min-width: 180px;
 }}
 QMenu::item:selected {{ background: {SEL_BG}; }}
+QMenu::separator {{
+    height: 1px;
+    background: {BORDER};
+    margin: 4px 8px;
+}}
 
 QMenuBar {{
     background: {BG_MID};

@@ -42,6 +42,12 @@ class PlaybackController(QObject):
 
     cue_state_changed = pyqtSignal(str)   # cue.id
     running_changed = pyqtSignal()
+    # Playhead-positie is gewijzigd. Wordt geëmit zodra de controller-
+    # interne playhead beweegt — bv. via een OSC-command zoals
+    # /livefire/playhead/next. UI luistert hierop om de cuelist visueel
+    # te syncen. Niet geëmit door go() omdat MainWindow.action_go z'n
+    # eigen sync-pad heeft (en we anders een loop met cuelist krijgen).
+    playhead_changed = pyqtSignal(int)
     # Wanneer een Network-cue's OSC-send faalt (lege/ongeldige address,
     # python-osc niet beschikbaar, enz.), emit (cue_id, error_message).
     # De UI kan zich hieraan abonneren om de operator te waarschuwen.
@@ -108,7 +114,11 @@ class PlaybackController(QObject):
         return self._playhead_index
 
     def set_playhead(self, index: int) -> None:
-        self._playhead_index = max(0, min(index, len(self.workspace.cues)))
+        new_idx = max(0, min(index, len(self.workspace.cues)))
+        if new_idx == self._playhead_index:
+            return
+        self._playhead_index = new_idx
+        self.playhead_changed.emit(self._playhead_index)
 
     def go(self) -> None:
         """Start de cue op de playhead, schuif playhead door."""
@@ -167,11 +177,57 @@ class PlaybackController(QObject):
 
     # ---- trigger-matching --------------------------------------------------
 
-    def _on_osc_message(self, address: str, _args: tuple) -> None:
-        """Op inkomende OSC: vind cues met trigger_osc == address en vuur ze."""
+    def _on_osc_message(self, address: str, args: tuple) -> None:
+        """Inkomende OSC heeft twee handlers:
+
+        1. **Built-in transport-commands** (``/livefire/...``) — voor
+           Companion-integratie en handmatige OSC-tests. GO / Stop All /
+           playhead-control / fire-by-number.
+        2. **Per-cue trigger_osc** — legacy pad: een cue vuurt zichzelf
+           als z'n eigen ``trigger_osc``-veld matcht.
+
+        Beide paden draaien naast elkaar zodat een gebruiker die de
+        oude aanpak (één unique address per cue) gebruikt niets merkt
+        van de nieuwe Companion-API.
+        """
+        if address.startswith("/livefire/"):
+            self._handle_livefire_command(address, args)
         for cue in self.workspace.cues:
             if cue.trigger_osc and cue.trigger_osc == address:
                 self.fire_cue(cue.id)
+
+    def _handle_livefire_command(self, address: str, args: tuple) -> None:
+        """Router voor de Companion/integratie-API. Onbekende addresses
+        in de ``/livefire/...``-namespace worden stilzwijgend genegeerd
+        — Companion verzendt soms heartbeat-pings die we niet kennen."""
+        if address == "/livefire/go":
+            self.go()
+            return
+        if address == "/livefire/stop_all":
+            self.stop_all()
+            return
+        if address == "/livefire/playhead/next":
+            self.set_playhead(self._playhead_index + 1)
+            return
+        if address == "/livefire/playhead/prev":
+            self.set_playhead(self._playhead_index - 1)
+            return
+        if address == "/livefire/playhead/goto":
+            if args and isinstance(args[0], (int, float)):
+                self.set_playhead(int(args[0]))
+            return
+        # /livefire/fire/<cue_number> — match op cue.cue_number (vrij
+        # tekstveld; we vergelijken case-sensitive).
+        prefix = "/livefire/fire/"
+        if address.startswith(prefix):
+            target_number = address[len(prefix):]
+            if not target_number:
+                return
+            for cue in self.workspace.cues:
+                if cue.cue_number == target_number:
+                    self.fire_cue(cue.id)
+                    return
+            return
 
     def stop_all(self) -> None:
         ids = list(self._running.keys())
