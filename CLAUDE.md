@@ -14,9 +14,11 @@ Cue-based audio / video / image / OSC / PowerPoint playback voor live shows.
 Moet draaiend te krijgen zijn op showlocaties zonder internet. Wordt mogelijk
 gedeeld met AV-collega's — eindtoestand is een Windows `.exe` installer.
 
-Huidige versie: **0.4.1** (Audio + Video + Image + Network/OSC-out +
+Huidige versie: **0.4.2** (Audio + Video + Image + Network/OSC-out +
 PowerPoint-import incl. timing-tree, OSC-in triggers, freemium-licensing-
-systeem aanwezig maar tijdelijk uitgezet via `LICENSING_ENABLED=False`).
+systeem aanwezig maar tijdelijk uitgezet via `LICENSING_ENABLED=False`,
+Companion / Stream Deck-integratie via een aparte module-repo, en
+undo/redo + cut/copy/paste voor cues).
 
 ## Tech stack
 
@@ -42,10 +44,10 @@ systeem aanwezig maar tijdelijk uitgezet via `LICENSING_ENABLED=False`).
 - **Packaging** (gepland v1.0.0): PyInstaller + Inno Setup.
 - **Tests**: `pytest` (~100 tests), geen CI-verplichting (nog).
 
-## Projectstructuur (v0.4.1)
+## Projectstructuur (v0.4.2)
 
 ```
-livefire-0.4.1/
+livefire/
 ├── livefire/
 │   ├── __init__.py           # APP_VERSION, SETTINGS_*, WORKSPACE_EXT
 │   ├── __main__.py           # python -m livefire
@@ -133,7 +135,7 @@ livefire-0.4.1/
 
 ## Roadmap
 
-Gedaan (v0.3.0 t/m v0.4.1):
+Gedaan (v0.3.0 t/m v0.4.2):
 - v0.3.0 — Refactor single-file → modules, sounddevice master-mixer.
 - v0.3.1/v0.3.2 — Output-device picker (QSettings), crossfades.
 - v0.4.0 — OSC-in (Companion/StreamDeck triggers) incl. learn-dialog,
@@ -143,6 +145,14 @@ Gedaan (v0.3.0 t/m v0.4.1):
   naar PNGs incl. embedded media (audio/video) en timing-tree-mapping
   (autoplay/click → continue_mode, loop, volume), freemium-licensing
   (HMAC-keys, momenteel uitgezet via `LICENSING_ENABLED`).
+- v0.4.2 — Companion / Stream Deck-integratie (OSC feedback engine +
+  extended commands + losse module-repo
+  [Bommelcode/companion-module-livefire](https://github.com/Bommelcode/companion-module-livefire)),
+  undo/redo + cut/copy/paste voor cues, Engelstalige UI als default,
+  freemium-licensing tijdelijk uit, en een grondige UX-pass
+  (Visual Studio-stijl font, witte vector-glyphs op de cue-toolbar,
+  swatch-rij i.p.v. dropdown voor kleuren, inline Continue-dropdown,
+  oranje radio-button-dots, sticky inspector aan de rechterrand).
 
 Nog te doen:
 1. **v0.4.x** — MIDI-in/out (`mido` + `python-rtmidi`).

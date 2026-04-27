@@ -2,7 +2,7 @@
 
 Cue-based playback voor Windows live events. QLab-geïnspireerd, Windows-native.
 
-**Huidige versie: 0.4.1**
+**Huidige versie: 0.4.2**
 
 > Tot v0.2.x heette dit project *QCue* — zie CLAUDE.md voor context.
 

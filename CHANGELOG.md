@@ -5,6 +5,8 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-04-27
+
 Companion / Stream Deck-integratie, undo/redo + cut/copy/paste,
 Engelstalige UI als default, freemium-licensing tijdelijk uit, en
 een grondige UX-pass.
