@@ -5,6 +5,8 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-04-27
+
 Echte group-cues — parent/child-tracking, 4 fire-modes, stop-cascade.
 
 ### Toegevoegd

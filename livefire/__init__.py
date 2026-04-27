@@ -1,7 +1,7 @@
 """liveFire — cue-based playback applicatie voor Windows live events."""
 
 APP_NAME = "liveFire"
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.5.1"
 WORKSPACE_FORMAT_VERSION = 2  # bump bij breaking changes in .livefire JSON
 WORKSPACE_EXT = ".livefire"
 
