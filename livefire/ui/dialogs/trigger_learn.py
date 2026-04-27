@@ -18,14 +18,14 @@ class OscLearnDialog(QDialog):
         self.engine = engine
         self.learned_address: str = ""
 
-        self.setWindowTitle("OSC-trigger leren")
+        self.setWindowTitle("Learn OSC trigger")
         self.setMinimumWidth(360)
 
         lay = QVBoxLayout(self)
 
         self.lbl_status = QLabel(
-            f"Wacht op OSC-input op poort {engine.port}…\n\n"
-            "Stuur nu een OSC-message vanaf je console (bv. Companion)."
+            f"Waiting for OSC input on port {engine.port}…\n\n"
+            "Send an OSC message from your console (e.g. Companion) now."
         )
         self.lbl_status.setWordWrap(True)
         self.lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -37,19 +37,25 @@ class OscLearnDialog(QDialog):
 
         self.engine.message_received.connect(self._on_message)
 
-    def _on_message(self, address: str, _args: tuple) -> None:
-        self.learned_address = address
-        self.lbl_status.setText(f"Ontvangen: {address}\n\nDialog sluit automatisch.")
-        # Disconnect zodat we maar één message pakken.
+    def _disconnect(self) -> None:
+        """Idempotent disconnect — voorkomt RuntimeError als de dialog op
+        een andere manier wordt gedestroyed (bv. parent-window sluit) en
+        er daarna nog een OSC-bericht binnenkomt op een gedelete object."""
         try:
             self.engine.message_received.disconnect(self._on_message)
         except TypeError:
             pass
+
+    def _on_message(self, address: str, _args: tuple) -> None:
+        self.learned_address = address
+        self.lbl_status.setText(f"Received: {address}\n\nDialog will close automatically.")
+        self._disconnect()
         self.accept()
 
     def reject(self) -> None:
-        try:
-            self.engine.message_received.disconnect(self._on_message)
-        except TypeError:
-            pass
+        self._disconnect()
         super().reject()
+
+    def closeEvent(self, e) -> None:  # type: ignore[override]
+        self._disconnect()
+        super().closeEvent(e)

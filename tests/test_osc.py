@@ -38,8 +38,8 @@ def test_osc_engine_receives_message(qt_app):
     received: List[Tuple[str, tuple]] = []
     eng.message_received.connect(lambda addr, args: received.append((addr, args)))
 
+    client = SimpleUDPClient("127.0.0.1", port)
     try:
-        client = SimpleUDPClient("127.0.0.1", port)
         client.send_message("/livefire/go/intro", [])
 
         # Wacht tot Qt-eventloop het signal heeft afgeleverd
@@ -48,6 +48,11 @@ def test_osc_engine_receives_message(qt_app):
             qt_app.processEvents()
             time.sleep(0.02)
     finally:
+        # SimpleUDPClient houdt z'n UDP-socket in `_sock`; expliciet
+        # sluiten zodat 't fd niet pas bij GC vrijkomt.
+        sock = getattr(client, "_sock", None)
+        if sock is not None:
+            sock.close()
         eng.stop()
 
     assert received, "geen OSC-message ontvangen"

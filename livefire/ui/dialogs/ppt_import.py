@@ -27,6 +27,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ...i18n import t
+from ..style import TEXT_DIM
 
 
 # Resultaat-keuzes
@@ -79,7 +80,7 @@ class PptImportDialog(QDialog):
             desc1 = desc1 + "\n\n⚠ " + t("pptimport.opt_slides_unavailable")
         lbl_desc1 = QLabel(desc1)
         lbl_desc1.setWordWrap(True)
-        lbl_desc1.setStyleSheet("color: palette(mid); padding-left: 22px;")
+        lbl_desc1.setStyleSheet(f"color: {TEXT_DIM}; padding-left: 22px;")
         lay.addWidget(lbl_desc1)
 
         # Scheiding
@@ -94,7 +95,7 @@ class PptImportDialog(QDialog):
 
         lbl_desc2 = QLabel(t("pptimport.opt_single_desc"))
         lbl_desc2.setWordWrap(True)
-        lbl_desc2.setStyleSheet("color: palette(mid); padding-left: 22px;")
+        lbl_desc2.setStyleSheet(f"color: {TEXT_DIM}; padding-left: 22px;")
         lay.addWidget(lbl_desc2)
 
         # Default-keuze: slides als COM beschikbaar is, anders single.

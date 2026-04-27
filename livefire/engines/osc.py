@@ -100,6 +100,12 @@ class OscInputEngine(QObject):
                 self._server.server_close()
             except Exception:
                 pass
+        # Wacht kort op de daemon-thread zodat 'ie de UDP-socket echt
+        # vrijgeeft vóór we 'm dropppen — anders kan een directe restart op
+        # dezelfde poort (bv. via Preferences) een "address already in use"
+        # opleveren, en lekken pytest-runs sockets als ResourceWarning.
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
         self._server = None
         self._thread = None
         self._port = 0

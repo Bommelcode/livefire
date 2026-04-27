@@ -19,7 +19,19 @@ def qt_app():
 
 
 @pytest.fixture
-def pro_license():
+def licensing_enabled():
+    """Schakel het freemium-licensing-systeem aan voor één test. De module
+    staat in productie tijdelijk uit (``LICENSING_ENABLED = False``); tests
+    die het gedrag van de gate willen verifiëren forceren 'm hier aan."""
+    from livefire import licensing
+    saved = licensing.LICENSING_ENABLED
+    licensing.LICENSING_ENABLED = True
+    yield
+    licensing.LICENSING_ENABLED = saved
+
+
+@pytest.fixture
+def pro_license(licensing_enabled):
     """Geeft tijdelijk een Pro-licentie aan de licensing-module zodat
     tests met paid cue-types (Video / Image / Presentation / Network)
     door de license-gate komen. In-memory only — raakt QSettings niet."""
@@ -35,7 +47,7 @@ def pro_license():
 
 
 @pytest.fixture
-def free_license():
+def free_license(licensing_enabled):
     """Garandeert FREE-tier voor de test (geen Pro). Expliciet zetten in
     plaats van leunen op default zodat een vorige test geen state lekt."""
     from livefire import licensing

@@ -1,0 +1,24 @@
+{
+  "name": "companion-module-livefire",
+  "version": "0.1.0",
+  "description": "Bitfocus Companion module for liveFire — cue-based playback for live events",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "package": "companion-module-build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@companion-module/base": "^1.10.0",
+    "osc": "^2.4.5"
+  },
+  "devDependencies": {
+    "@companion-module/tools": "^2.0.0",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.12"
+  }
+}

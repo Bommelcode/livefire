@@ -143,6 +143,19 @@ class OscOutputEngine(QObject):
             self._clients[key] = client
         return client
 
+    @staticmethod
+    def _close_client(client) -> None:
+        """Sluit het UDP-socket van een SimpleUDPClient best-effort.
+        ``_sock`` is een privé-attribuut van python-osc maar staat al
+        sinds v1.7 stabiel; voor andere objecten (bv. een test-stub die
+        per ongeluk in de cache zit) doen we niets."""
+        try:
+            sock = getattr(client, "_sock", None)
+            if sock is not None:
+                sock.close()
+        except Exception:
+            pass
+
     def send(
         self, host: str, port: int, address: str, args: list,
     ) -> tuple[bool, str]:
@@ -170,8 +183,12 @@ class OscOutputEngine(QObject):
             client.send_message(address, args)
         except Exception as e:
             # Verwijder een mogelijk corrupte cached client zodat een
-            # volgende send opnieuw probeert te resolven.
-            self._clients.pop((host, port_i), None)
+            # volgende send opnieuw probeert te resolven. Sluit z'n socket
+            # zodat de fd niet pas bij GC vrijkomt (zou een ResourceWarning
+            # opleveren bij snelle send-loops met steeds falende host).
+            evicted = self._clients.pop((host, port_i), None)
+            if evicted is not None:
+                self._close_client(evicted)
             return False, f"Versturen mislukt: {e}"
         self.message_sent.emit(host, port_i, address)
         return True, ""
@@ -179,14 +196,7 @@ class OscOutputEngine(QObject):
     def shutdown(self) -> None:
         """Sluit eventuele cached UDP-clients (ze hebben elk een socket)."""
         for client in self._clients.values():
-            try:
-                # python-osc's SimpleUDPClient houdt z'n socket in
-                # ``_sock`` (private). We sluiten 'm best-effort.
-                sock = getattr(client, "_sock", None)
-                if sock is not None:
-                    sock.close()
-            except Exception:
-                pass
+            self._close_client(client)
         self._clients.clear()
 
 

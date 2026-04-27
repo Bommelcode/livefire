@@ -37,13 +37,13 @@ class TransportWidget(QWidget):
 
         self.btn_go = QPushButton("GO")
         self.btn_go.setObjectName("goButton")
-        self.btn_go.setToolTip("Start de cue op de playhead (Spatie)")
+        self.btn_go.setToolTip("Start the cue at the playhead (Space)")
         self.btn_go.clicked.connect(self.go_clicked.emit)
         lay.addWidget(self.btn_go)
 
         self.btn_stop = QPushButton("Stop All")
         self.btn_stop.setObjectName("stopButton")
-        self.btn_stop.setToolTip("Stop onmiddellijk alle actieve cues (Escape)")
+        self.btn_stop.setToolTip("Stop all active cues immediately (Escape)")
         self.btn_stop.clicked.connect(self.stop_all_clicked.emit)
         lay.addWidget(self.btn_stop)
 
@@ -53,11 +53,11 @@ class TransportWidget(QWidget):
         lay.addWidget(sep)
 
         self.lbl_playhead = QLabel("Playhead: —")
-        self.lbl_playhead.setToolTip("De cue die bij de volgende GO gestart wordt")
+        self.lbl_playhead.setToolTip("The cue that will fire on the next GO")
         lay.addWidget(self.lbl_playhead)
 
-        self.lbl_active = QLabel("Actief: 0")
-        self.lbl_active.setToolTip("Aantal cues dat op dit moment speelt")
+        self.lbl_active = QLabel("Active: 0")
+        self.lbl_active.setToolTip("Number of cues currently playing")
         lay.addWidget(self.lbl_active)
 
         lay.addStretch(1)
@@ -72,8 +72,8 @@ class TransportWidget(QWidget):
         self.lbl_countdown.setFont(cd_font)
         self.lbl_countdown.setStyleSheet(f"color: {ACCENT};")
         self.lbl_countdown.setToolTip(
-            "Resterende tijd van de langstlopende audio-cue. Bij oneindige "
-            "loop telt 'ie op (prefix +)."
+            "Remaining time of the longest-running audio cue. With infinite "
+            "loop it counts up (prefix +)."
         )
         self.lbl_countdown.setMinimumWidth(360)
         lay.addWidget(self.lbl_countdown)
@@ -86,7 +86,7 @@ class TransportWidget(QWidget):
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         name_font = QFont()
-        name_font.setPointSize(11)
+        name_font.setPointSize(10)
         self.lbl_countdown_name.setFont(name_font)
         self.lbl_countdown_name.setStyleSheet(f"color: {TEXT_DIM};")
         self.lbl_countdown_name.setMinimumWidth(180)
@@ -104,7 +104,7 @@ class TransportWidget(QWidget):
 
     def set_playhead(self, index: int, total: int, cue_label: str = "") -> None:
         if index >= total:
-            self.lbl_playhead.setText(f"Playhead: einde ({total})")
+            self.lbl_playhead.setText(f"Playhead: end ({total})")
         else:
             label = f"{index + 1}/{total}"
             if cue_label:
@@ -112,7 +112,7 @@ class TransportWidget(QWidget):
             self.lbl_playhead.setText(f"Playhead: {label}")
 
     def set_active_count(self, n: int) -> None:
-        self.lbl_active.setText(f"Actief: {n}")
+        self.lbl_active.setText(f"Active: {n}")
 
     # ---- countdown ---------------------------------------------------------
 

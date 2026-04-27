@@ -41,6 +41,15 @@ from . import SETTINGS_ORG, SETTINGS_APP
 from .cues import CueType
 
 
+# ---- Feature-flag ----------------------------------------------------------
+
+# Master-switch voor het hele freemium/licensing-systeem. Staat tijdelijk uit
+# zodat alle cue-types vrij bruikbaar zijn en de Licentie-UI niet zichtbaar
+# is. De volledige module blijft intact — flip terug naar ``True`` om de
+# enforcement, banners en het menu-item Help → Licentie… weer aan te zetten.
+LICENSING_ENABLED: Final[bool] = False
+
+
 # ---- Tiers + prijzen + feature-mapping -------------------------------------
 
 class LicenseTier:
@@ -183,12 +192,16 @@ def init() -> None:
 # ---- Public lookup-functies ------------------------------------------------
 
 def current_tier() -> str:
+    if not LICENSING_ENABLED:
+        return LicenseTier.LIFETIME
     if _parsed is None or _parsed.expired:
         return LicenseTier.FREE
     return _parsed.tier
 
 
 def is_pro() -> bool:
+    if not LICENSING_ENABLED:
+        return True
     return current_tier() in LicenseTier.PRO_TIERS
 
 
@@ -208,6 +221,8 @@ def days_remaining() -> int | None:
 
 def has_feature(cue_type: str) -> bool:
     """Of een cue van dit type bij GO en bij creatie mag draaien."""
+    if not LICENSING_ENABLED:
+        return True
     if cue_type not in PAID_CUE_TYPES:
         return True
     return is_pro()
