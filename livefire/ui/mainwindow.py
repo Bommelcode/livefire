@@ -25,6 +25,7 @@ from ..engines.audio import (
     register_status as register_audio_status,
     find_device_index_by_name,
 )
+from ..engines.dmx import register_status as register_dmx_status
 from ..engines.image import register_status as register_image_status
 from ..engines.osc import register_status as register_osc_status
 from ..engines.osc_feedback import (
@@ -115,6 +116,7 @@ class MainWindow(QMainWindow):
         register_video_status(self.controller.video)
         register_image_status(self.controller.image)
         register_powerpoint_status(self.controller.powerpoint)
+        register_dmx_status(self.controller.dmx)
         # Companion-feedback registreren — start gebeurt hieronder.
         register_osc_feedback_status(self.feedback)
         # VLC-audio-device uit QSettings toepassen
@@ -285,6 +287,8 @@ class MainWindow(QMainWindow):
                          tip="Control a PowerPoint presentation via COM (Open / Next Slide / Previous / Go To / Close)")
         self._add_action(m_cue, "New Network Cue", lambda: self.action_new_cue(CueType.NETWORK), QKeySequence("Ctrl+5"),
                          tip="Send an OSC message to an external receiver (Companion, QLab, SQ5, …)")
+        self._add_action(m_cue, "New DMX Cue", lambda: self.action_new_cue(CueType.DMX), QKeySequence("Ctrl+Shift+D"),
+                         tip="DMX (Art-Net + sACN) snapshot, fade, or chase to a lighting console / fixture")
         self._add_action(m_cue, "New Fade Cue", lambda: self.action_new_cue(CueType.FADE), QKeySequence("Ctrl+6"),
                          tip="Change the volume of another (running) audio cue over time")
         self._add_action(m_cue, "New Wait Cue", lambda: self.action_new_cue(CueType.WAIT), QKeySequence("Ctrl+7"),

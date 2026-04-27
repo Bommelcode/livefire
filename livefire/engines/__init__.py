@@ -1,4 +1,5 @@
 from .audio import AudioEngine
+from .dmx import DmxEngine
 from .image import ImageEngine
 from .osc import OscInputEngine
 from .osc_feedback import OscFeedbackEngine
@@ -8,6 +9,7 @@ from .video import VideoEngine
 from . import registry
 
 __all__ = [
-    "AudioEngine", "ImageEngine", "OscInputEngine", "OscFeedbackEngine",
-    "OscOutputEngine", "PowerPointEngine", "VideoEngine", "registry",
+    "AudioEngine", "DmxEngine", "ImageEngine", "OscInputEngine",
+    "OscFeedbackEngine", "OscOutputEngine", "PowerPointEngine",
+    "VideoEngine", "registry",
 ]

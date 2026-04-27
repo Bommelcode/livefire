@@ -21,7 +21,7 @@ from ..i18n import t
 
 _CUE_TYPE_ORDER = [
     CueType.AUDIO, CueType.VIDEO, CueType.IMAGE, CueType.PRESENTATION,
-    CueType.NETWORK,
+    CueType.NETWORK, CueType.DMX,
     CueType.FADE, CueType.WAIT, CueType.STOP,
     CueType.START, CueType.GROUP, CueType.MEMO,
 ]
@@ -32,6 +32,7 @@ _CUE_TYPE_TIPS = {
     CueType.IMAGE:        "New Image cue (Ctrl+3)",
     CueType.PRESENTATION: "New Presentation cue (Ctrl+4)",
     CueType.NETWORK:      "New Network cue (Ctrl+5)",
+    CueType.DMX:          "New DMX cue (Ctrl+Shift+D)",
     CueType.FADE:         "New Fade cue (Ctrl+6)",
     CueType.WAIT:         "New Wait cue (Ctrl+7)",
     CueType.STOP:         "New Stop cue (Ctrl+8)",
@@ -118,6 +119,31 @@ def _draw_network(p: QPainter) -> None:
         p.drawEllipse(QRectF(x - 2, y - 2, 4, 4))
 
 
+def _draw_dmx(p: QPainter) -> None:
+    # Vijf "fader"-balken met variërende heights — net zoals een DMX-
+    # console-strip. Onder een dunne basislijn als grondvlak.
+    _fill(p)
+    bars = [
+        (3, 5, 2, 9),    # x, y, w, h (h tot bottom 14)
+        (6, 8, 2, 6),
+        (9, 4, 2, 10),
+        (12, 7, 2, 7),
+        (15, 6, 2, 8),
+    ]
+    # Bar widths > 18 bbox — laatste loopt iets buiten; pas aan
+    bars = [
+        (3, 5, 2, 9),
+        (6, 8, 2, 6),
+        (9, 4, 2, 10),
+        (12, 7, 2, 7),
+        (14, 6, 2, 8),
+    ]
+    for x, y, w, h in bars:
+        p.drawRect(x, y, w, h)
+    _stroke(p)
+    p.drawLine(2, 14, 16, 14)
+
+
 def _draw_fade(p: QPainter) -> None:
     # Wedge-driehoek = volume die afloopt.
     _fill(p)
@@ -170,6 +196,7 @@ _GLYPH_DRAWERS = {
     CueType.IMAGE:        _draw_image,
     CueType.PRESENTATION: _draw_presentation,
     CueType.NETWORK:      _draw_network,
+    CueType.DMX:          _draw_dmx,
     CueType.FADE:         _draw_fade,
     CueType.WAIT:         _draw_wait,
     CueType.STOP:         _draw_stop,

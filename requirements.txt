@@ -28,7 +28,10 @@ pywin32>=305 ; sys_platform == "win32"
 # ongerelevant.
 cryptography>=42
 
+# DMX (Art-Net + sACN) hoeft geen externe dependency — beide protocols
+# encoderen we zelf met `struct` + raw UDP socket. Houdt de dep-set
+# kleiner én voorkomt de async/sync-mismatch die pyartnet>=1.0 heeft
+# met onze QTimer-gebaseerde controller.
+
 # Optioneel nog uit te werken in komende versies:
-# pyartnet>=0.8      # DMX Art-Net (v0.5)
-# sacn>=1.9          # sACN E1.31 (v0.5)
 # cyndilib>=0.0.8    # NDI-out (v0.6)
