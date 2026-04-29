@@ -141,6 +141,12 @@ class PlaybackController(QObject):
             return
         cue = self.workspace.cues[self._playhead_index]
         self._playhead_index += 1
+        # UI moet weten dat de playhead bewogen is — anders blijft de
+        # oranje highlight op de oude rij staan wanneer go() via een
+        # extern pad (OSC, Stream Deck) wordt getriggerd. action_go in
+        # MainWindow bewerkt de cuelist al expliciet, dus voor het
+        # keyboard/menu-pad is dit een no-op (idempotent in cuelist).
+        self.playhead_changed.emit(self._playhead_index)
         self._start_cue(cue)
 
     def fire_cue(self, cue_id: str) -> bool:
@@ -497,6 +503,9 @@ class PlaybackController(QObject):
             return
         nxt = self.workspace.cues[self._playhead_index]
         self._playhead_index += 1
+        # Sync UI — zelfde reden als go(): zonder emit blijft de oranje
+        # highlight op de vorige rij staan tijdens AUTO_CONTINUE/AUTO_FOLLOW.
+        self.playhead_changed.emit(self._playhead_index)
         self._start_cue(nxt)
 
     # ---- group-cue afhandeling --------------------------------------------

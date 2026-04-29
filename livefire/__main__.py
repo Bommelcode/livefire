@@ -7,9 +7,9 @@ import time
 from pathlib import Path
 
 import ctypes
-from PyQt6.QtCore import Qt, QCoreApplication, QSettings
+from PyQt6.QtCore import Qt, QCoreApplication, QSettings, QSharedMemory
 from PyQt6.QtGui import QFont, QIcon
-from PyQt6.QtWidgets import QApplication, QSplashScreen
+from PyQt6.QtWidgets import QApplication, QMessageBox, QSplashScreen
 
 from . import APP_NAME, SETTINGS_ORG, SETTINGS_APP
 from .i18n import set_language
@@ -17,6 +17,51 @@ from .i18n import set_language
 
 _ICON_PATH = Path(__file__).parent / "resources" / "icon.png"
 _SPLASH_DURATION_S = 3.5
+
+# Singleton-key voor de QSharedMemory-segment. Versionering ingebakken
+# zodat een toekomstige format-bump niet botst met een oude instance
+# die nog draait tijdens een upgrade.
+_SINGLETON_KEY = "livefire-singleton-v1"
+
+
+def _acquire_single_instance_lock(app: QApplication) -> QSharedMemory | None:
+    """Probeer een proces-brede lock te claimen. Returns de shared-memory
+    handle (die actief blijft zolang de app draait) of None als er al een
+    andere instance draait — in dat geval is er een nette dialog getoond
+    en moet de caller met exitcode != 0 afsluiten.
+
+    Werkt op Windows, macOS en Linux: QSharedMemory wraps Win32 named
+    objects respectievelijk POSIX shm. De kernel ruimt de segment auto-
+    matisch op wanneer het proces eindigt (ook bij crash), dus stale
+    locks zijn zeldzaam.
+    """
+    shm = QSharedMemory(_SINGLETON_KEY)
+    # attach() lukt alleen wanneer een andere instance de segment al
+    # heeft aangemaakt — dat is het signaal dat er al een liveFire
+    # draait.
+    if shm.attach():
+        shm.detach()
+        QMessageBox.warning(
+            None,
+            "liveFire is already running",
+            "Another instance of liveFire is already running on this machine.\n\n"
+            "Switch to that window instead — running two at once would clash on "
+            "the OSC-input port and audio device.",
+        )
+        return None
+    if not shm.create(1):
+        # Onverwachte fout (geen permissions, OS-resource-limit, ...).
+        QMessageBox.critical(
+            None,
+            "Cannot start liveFire",
+            "Failed to acquire single-instance lock:\n\n"
+            f"{shm.errorString()}",
+        )
+        return None
+    # Houd 'm aan de QApplication zodat hij niet door de garbage-
+    # collector wordt opgeruimd vóór app-exit.
+    app._singleton_shm = shm  # type: ignore[attr-defined]
+    return shm
 
 
 def main() -> int:
@@ -55,6 +100,13 @@ def main() -> int:
     if _ICON_PATH.is_file():
         app.setWindowIcon(QIcon(str(_ICON_PATH)))
     app.setStyleSheet(build_stylesheet())
+
+    # Single-instance gate. Twee instances tegelijk botsen op de OSC-
+    # input UDP-poort, het audio-device en het Companion-feedback-pad —
+    # dus verbieden we 't meteen met een nette dialog ipv te wachten
+    # tot één van de engines met een WinError 10048 omvalt.
+    if _acquire_single_instance_lock(app) is None:
+        return 1
 
     w = MainWindow()
     w.show()
