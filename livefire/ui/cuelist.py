@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 from ..cues import Cue, CueType, ContinueMode
 from ..i18n import t
 from ..workspace import Workspace
-from .style import STATE_COLORS, ACCENT, TEXT_DIM, tint_for_row
+from .style import STATE_COLORS, ACCENT, ACCENT_ALT, TEXT_DIM, tint_for_row
 
 
 def _columns() -> list[str]:
@@ -368,21 +368,76 @@ class CueListWidget(QTreeWidget):
         self.playhead_changed.emit(self._playhead_index)
 
     def _apply_playhead_style(self) -> None:
-        """Bold + accent-color op de cue waar de playhead op staat.
-        Walks zowel top-level als nested children via _id_to_item zodat
-        het ook werkt voor cues binnen een group."""
+        """Markeer de cue waar de playhead op staat met oranje achtergrond
+        + witte vette tekst, à la QLab. Op een donker thema valt 't bold-
+        only-pad eerder weg dan dat 't opvalt; deze stijl is aan twee
+        meter afstand nog leesbaar.
+
+        Werkt voor zowel top-level als nested children via _id_to_item.
+        Bij not-playhead reset 'ie de cell-kleuren naar de cue-color-bar
+        (zelfde regels als _make_item / update_cue_display)."""
         dim = QBrush(QColor(TEXT_DIM))
-        accent = QBrush(QColor(ACCENT))
+        text = QBrush(QColor("#ffffff"))
+        # ACCENT_ALT met alpha — semi-transparant zodat alternating-rows
+        # nog subtiel doorschijnen en de cue-color-tag aan de linker-cel
+        # niet volledig wordt overschreven.
+        ph_bg_color = QColor(ACCENT_ALT)
+        ph_bg_color.setAlpha(140)
+        ph_bg = QBrush(ph_bg_color)
+        # Accent-balk in de eerste kolom (volle dekking) over de cue-
+        # color-tag heen wanneer dit de playhead is — geeft een
+        # duidelijke verticale streep aan de linkerkant.
+        ph_bar_color = QColor(ACCENT_ALT)
+        ph_bar = QBrush(ph_bar_color)
+
         playhead_id: str | None = None
         if 0 <= self._playhead_index < len(self.workspace.cues):
             playhead_id = self.workspace.cues[self._playhead_index].id
+
         for cue_id, item in self._id_to_item.items():
+            cue = self.workspace.find(cue_id)
             is_ph = (cue_id == playhead_id)
+
             f = item.font(0)
             f.setBold(is_ph)
             for col in range(self.columnCount()):
                 item.setFont(col, f)
-            item.setForeground(1, accent if is_ph else dim)
+
+            if is_ph:
+                # Volle oranje balk op de nummer-kolom + getinte rest
+                item.setBackground(0, ph_bar)
+                for col in range(1, self.columnCount()):
+                    item.setBackground(col, ph_bg)
+                # Witte tekst zodat 't contrast met oranje sterk blijft;
+                # behalve de status-cel die z'n eigen state-color toont.
+                for col in range(self.columnCount()):
+                    item.setForeground(col, text)
+                state_color = STATE_COLORS.get(
+                    cue.state if cue else "idle", QColor("#ffffff")
+                )
+                item.setForeground(5, QBrush(state_color))
+            else:
+                # Reset naar cue-color-tag (zelfde logica als _make_item).
+                if cue is not None and cue.color:
+                    full = QBrush(QColor(cue.color))
+                    tint = QBrush(tint_for_row(cue.color))
+                    item.setBackground(0, full)
+                    for col in range(1, self.columnCount()):
+                        item.setBackground(col, tint)
+                else:
+                    empty = QBrush()
+                    for col in range(self.columnCount()):
+                        item.setBackground(col, empty)
+                # Default-foregrounds — kolom 1 dim, status z'n eigen
+                # state-color, rest QBrush() (= palette default).
+                default_fg = QBrush()
+                for col in range(self.columnCount()):
+                    item.setForeground(col, default_fg)
+                item.setForeground(1, dim)
+                state_color = STATE_COLORS.get(
+                    cue.state if cue else "idle", QColor("#888")
+                )
+                item.setForeground(5, QBrush(state_color))
 
     # ---- events ------------------------------------------------------------
 
