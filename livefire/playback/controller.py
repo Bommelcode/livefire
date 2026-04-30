@@ -64,6 +64,10 @@ class PlaybackController(QObject):
     # Bedoeld voor scripted scenario's waar je expliciet wilt zetten i.p.v.
     # toggelen — bv. "schakel showtime ALTIJD aan voor een bepaalde cue".
     showtime_set_requested = pyqtSignal(bool)
+    # Companion's "save now"-knop (op de workspace_name-tile). MainWindow
+    # routeert naar action_save. Bestaat nog geen path? Dan opent action_save
+    # een Save-As-dialog — operator krijgt dan een prompt.
+    save_requested = pyqtSignal()
     # Wanneer een Network-cue's OSC-send faalt (lege/ongeldige address,
     # python-osc niet beschikbaar, enz.), emit (cue_id, error_message).
     # De UI kan zich hieraan abonneren om de operator te waarschuwen.
@@ -294,6 +298,9 @@ class PlaybackController(QObject):
         if address == "/livefire/showtime/set":
             if args:
                 self.showtime_set_requested.emit(bool(args[0]))
+            return
+        if address == "/livefire/save":
+            self.save_requested.emit()
             return
         # /livefire/fire/<cue_number> — match op cue.cue_number (vrij
         # tekstveld; we vergelijken case-sensitive).

@@ -129,6 +129,8 @@ class MainWindow(QMainWindow):
         self.controller.showtime_set_requested.connect(
             self.transport.set_showtime
         )
+        # Companion vraagt save (workspace-name-tile = save-knop).
+        self.controller.save_requested.connect(self.action_save)
         # NB. controller.playhead_changed → cue_list.set_playhead wordt
         # ná _build_ui() aangesloten, want de cue_list bestaat hier nog
         # niet.
