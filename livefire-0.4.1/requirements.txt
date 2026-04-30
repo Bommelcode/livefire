@@ -1,0 +1,34 @@
+# Core GUI + runtime
+PyQt6>=6.7
+
+# Audio
+sounddevice>=0.4.7
+soundfile>=0.12
+numpy>=1.26
+scipy>=1.12          # resample_poly voor sample-rate conversion
+
+# MIDI / OSC — cue-triggering vanaf Companion / Stream Deck / externe consoles.
+# python-osc is pure Python en werkt zonder build-tools (v0.4.0 OSC-in).
+# mido + python-rtmidi komen in v0.4.x bij MIDI-in (python-rtmidi heeft op
+# Python 3.14 geen prebuilt wheel; dan evt. terugzakken naar 3.11).
+python-osc>=1.8
+# mido>=1.3
+# python-rtmidi>=1.5
+
+# Video
+python-vlc>=3.0
+
+# PowerPoint — COM-besturing voor Presentatie-cues. Vereist Windows +
+# Microsoft Office; engine degraded gracefully op machines zonder Office.
+pywin32>=305 ; sys_platform == "win32"
+
+# Licensing — Ed25519 signing/verification voor dag- en abonnement-
+# licenties. `cryptography` heeft betrouwbare Windows-wheels en is een
+# de-facto standaard. We gebruiken alleen de Ed25519-API; de rest is
+# ongerelevant.
+cryptography>=42
+
+# Optioneel nog uit te werken in komende versies:
+# pyartnet>=0.8      # DMX Art-Net (v0.5)
+# sacn>=1.9          # sACN E1.31 (v0.5)
+# cyndilib>=0.0.8    # NDI-out (v0.6)

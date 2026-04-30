@@ -1,0 +1,283 @@
+"""Genereer een set witte glyphs voor Stream Deck buttons (Companion).
+
+Output: 144x144 PNG met transparante achtergrond. Dropt in Companion's
+Image Library zodat je ze met de Image-picker op presets kunt zetten.
+"""
+
+from __future__ import annotations
+
+import math
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFilter
+
+SIZE = 144
+WHITE = (255, 255, 255, 255)
+W = SIZE
+
+
+def _new() -> Image.Image:
+    return Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
+
+
+def _ctx(img: Image.Image) -> ImageDraw.ImageDraw:
+    return ImageDraw.Draw(img)
+
+
+# ---- shape primitives ---------------------------------------------------
+
+
+def play_triangle(d: ImageDraw.ImageDraw) -> None:
+    # Iets naar rechts geoffset zodat de zwaartekracht visueel klopt.
+    pad = 30
+    pts = [
+        (pad + 12, pad),
+        (pad + 12, W - pad),
+        (W - pad + 8, W // 2),
+    ]
+    d.polygon(pts, fill=WHITE)
+
+
+def square_solid(d: ImageDraw.ImageDraw) -> None:
+    pad = 36
+    d.rectangle([pad, pad, W - pad, W - pad], fill=WHITE)
+
+
+def square_with_x(d: ImageDraw.ImageDraw) -> None:
+    pad = 30
+    d.rectangle([pad, pad, W - pad, W - pad], fill=WHITE)
+    # Cut-out X — twee zwarte diagonalen via "transparante" rectangle
+    # mask. Simpler: draw zwarte X.
+    pad2 = 50
+    d.line([pad2, pad2, W - pad2, W - pad2], fill=(0, 0, 0, 0), width=10)
+    d.line([pad2, W - pad2, W - pad2, pad2], fill=(0, 0, 0, 0), width=10)
+
+
+def pause_bars(d: ImageDraw.ImageDraw) -> None:
+    pad = 36
+    bw = 18
+    cx = W // 2
+    d.rectangle([cx - 26, pad, cx - 26 + bw, W - pad], fill=WHITE)
+    d.rectangle([cx + 26 - bw, pad, cx + 26, W - pad], fill=WHITE)
+
+
+def chevron_down(d: ImageDraw.ImageDraw) -> None:
+    # Twee gestapelde V's (pijl-naar-beneden)
+    cx = W // 2
+    for y_off in (0, 36):
+        pts = [
+            (cx - 36, 36 + y_off),
+            (cx + 36, 36 + y_off),
+            (cx, 72 + y_off),
+        ]
+        d.polygon(pts, fill=WHITE)
+
+
+def chevron_up(d: ImageDraw.ImageDraw) -> None:
+    cx = W // 2
+    for y_off in (0, 36):
+        pts = [
+            (cx - 36, W - 36 - y_off),
+            (cx + 36, W - 36 - y_off),
+            (cx, W - 72 - y_off),
+        ]
+        d.polygon(pts, fill=WHITE)
+
+
+def fast_forward(d: ImageDraw.ImageDraw) -> None:
+    # Twee triangles naast elkaar →→
+    pad = 24
+    h = (W - 2 * pad) // 2
+    cy = W // 2
+    for x_off in (0, h):
+        pts = [
+            (pad + x_off, cy - h),
+            (pad + x_off, cy + h),
+            (pad + x_off + h, cy),
+        ]
+        d.polygon(pts, fill=WHITE)
+
+
+def rewind(d: ImageDraw.ImageDraw) -> None:
+    pad = 24
+    h = (W - 2 * pad) // 2
+    cy = W // 2
+    for x_off in (0, h):
+        pts = [
+            (W - pad - x_off, cy - h),
+            (W - pad - x_off, cy + h),
+            (W - pad - x_off - h, cy),
+        ]
+        d.polygon(pts, fill=WHITE)
+
+
+def speaker(d: ImageDraw.ImageDraw) -> None:
+    # Trapezoid + arc-waves
+    pad = 24
+    cx = 56
+    cy = W // 2
+    # box
+    d.rectangle([pad, cy - 14, cx, cy + 14], fill=WHITE)
+    # cone (driehoek)
+    d.polygon(
+        [(cx, cy - 14), (cx + 30, cy - 36), (cx + 30, cy + 36), (cx, cy + 14)],
+        fill=WHITE,
+    )
+    # waves
+    for i, r in enumerate((22, 38)):
+        d.arc(
+            [cx + 30 - r, cy - r, cx + 30 + r, cy + r],
+            start=-45,
+            end=45,
+            fill=WHITE,
+            width=8,
+        )
+
+
+def video_box(d: ImageDraw.ImageDraw) -> None:
+    pad = 24
+    d.rounded_rectangle(
+        [pad, pad + 12, W - pad, W - pad - 12], radius=10, outline=WHITE, width=8,
+    )
+    # play-tipje
+    cx, cy = W // 2, W // 2
+    d.polygon(
+        [(cx - 16, cy - 18), (cx - 16, cy + 18), (cx + 18, cy)], fill=WHITE,
+    )
+
+
+def image_frame(d: ImageDraw.ImageDraw) -> None:
+    pad = 24
+    d.rounded_rectangle(
+        [pad, pad, W - pad, W - pad], radius=10, outline=WHITE, width=8,
+    )
+    # zon
+    d.ellipse([pad + 14, pad + 14, pad + 36, pad + 36], fill=WHITE)
+    # bergen
+    pts = [
+        (pad + 6, W - pad - 6),
+        (pad + 36, W // 2 + 4),
+        (W // 2, W - pad - 14),
+        (W - pad - 24, W // 2 - 4),
+        (W - pad - 6, W - pad - 6),
+    ]
+    d.polygon(pts, fill=WHITE)
+
+
+def slide_rect(d: ImageDraw.ImageDraw) -> None:
+    # PowerPoint: rounded rect met drie tekst-bullets
+    pad = 22
+    d.rounded_rectangle(
+        [pad, pad + 6, W - pad, W - pad - 6], radius=10, outline=WHITE, width=7,
+    )
+    cx = W // 2
+    for i, y in enumerate((W // 2 - 18, W // 2, W // 2 + 18)):
+        # bullet
+        d.ellipse([pad + 14, y - 4, pad + 22, y + 4], fill=WHITE)
+        # tekstlijn
+        d.rectangle([pad + 30, y - 3, W - pad - 14, y + 3], fill=WHITE)
+
+
+def lightbulb(d: ImageDraw.ImageDraw) -> None:
+    # DMX-glyph: gloeilamp met straling
+    cx, cy = W // 2, W // 2 - 8
+    r = 32
+    d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=WHITE)
+    # voet
+    d.rectangle([cx - 16, cy + r - 4, cx + 16, cy + r + 14], fill=WHITE)
+    d.rectangle([cx - 12, cy + r + 14, cx + 12, cy + r + 22], fill=WHITE)
+    # straling
+    for ang in range(0, 360, 45):
+        rad = math.radians(ang)
+        x1 = cx + int(math.cos(rad) * (r + 12))
+        y1 = cy + int(math.sin(rad) * (r + 12))
+        x2 = cx + int(math.cos(rad) * (r + 24))
+        y2 = cy + int(math.sin(rad) * (r + 24))
+        d.line([x1, y1, x2, y2], fill=WHITE, width=6)
+
+
+def network_globe(d: ImageDraw.ImageDraw) -> None:
+    # Drie expanderende cirkel-segmenten (wifi/zend-icon)
+    cx, cy = W // 2, W - 36
+    for i, r in enumerate((24, 50, 76)):
+        d.arc(
+            [cx - r, cy - r, cx + r, cy + r],
+            start=200, end=340, fill=WHITE, width=10,
+        )
+    # punt
+    d.ellipse([cx - 8, cy - 8, cx + 8, cy + 8], fill=WHITE)
+
+
+def folder(d: ImageDraw.ImageDraw) -> None:
+    # Group-cue glyph: folder
+    pad = 22
+    # tab
+    d.rounded_rectangle(
+        [pad, pad + 12, pad + 56, pad + 36], radius=6, fill=WHITE,
+    )
+    # body
+    d.rounded_rectangle(
+        [pad, pad + 28, W - pad, W - pad], radius=8, fill=WHITE,
+    )
+    # uitsparing om de tab te onderscheiden
+    d.line(
+        [pad + 56, pad + 28, pad + 56, pad + 36], fill=(0, 0, 0, 0), width=4,
+    )
+
+
+def standby_circle(d: ImageDraw.ImageDraw) -> None:
+    # Open cirkel (cue-marker), QLab-style
+    pad = 24
+    d.ellipse([pad, pad, W - pad, W - pad], outline=WHITE, width=10)
+
+
+def clock(d: ImageDraw.ImageDraw) -> None:
+    # Klok met wijzers — staat voor "wait" / "standby"
+    pad = 24
+    d.ellipse([pad, pad, W - pad, W - pad], outline=WHITE, width=8)
+    cx, cy = W // 2, W // 2
+    # uren-wijzer (omhoog)
+    d.line([cx, cy, cx, cy - 28], fill=WHITE, width=8)
+    # minuten-wijzer (naar rechts)
+    d.line([cx, cy, cx + 36, cy], fill=WHITE, width=6)
+
+
+# ---- runner -------------------------------------------------------------
+
+
+GLYPHS = [
+    ("go", play_triangle),
+    ("stop", square_solid),
+    ("stop_all", square_with_x),
+    ("pause", pause_bars),
+    ("next", chevron_down),
+    ("prev", chevron_up),
+    ("bank_next", fast_forward),
+    ("bank_prev", rewind),
+    ("audio", speaker),
+    ("video", video_box),
+    ("image", image_frame),
+    ("powerpoint", slide_rect),
+    ("dmx", lightbulb),
+    ("network", network_globe),
+    ("group", folder),
+    ("standby", standby_circle),
+    ("wait", clock),
+]
+
+
+def main() -> None:
+    out_dir = Path.home() / "Downloads" / "livefire-glyphs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for name, fn in GLYPHS:
+        img = _new()
+        fn(_ctx(img))
+        # Lichte glow onder 't witte glyph zodat 'ie ook op witte
+        # achtergrond een rand heeft. Subtiel — alleen 1px expanded.
+        img.save(out_dir / f"{name}.png", "PNG")
+        print(f"  {name}.png")
+    print(f"\n{len(GLYPHS)} glyphs naar {out_dir}")
+
+
+if __name__ == "__main__":
+    main()
