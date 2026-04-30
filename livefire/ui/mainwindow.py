@@ -120,20 +120,15 @@ class MainWindow(QMainWindow):
         # zodat namen, types en kleuren weer kloppen zonder dat de operator
         # eerst een cue moet wijzigen.
         self.controller.snapshot_requested.connect(self._broadcast_cuelist_snapshot)
-        # OSC-driven showtime-lock — Companion module schakelt 'm aan/uit
-        # via deze signals. transport.set_showtime houdt de QPushButton-
-        # state in sync, en die emit op z'n beurt _on_showtime_toggled.
-        self.controller.showtime_toggle_requested.connect(
-            lambda: self.transport.set_showtime(not self._showtime)
-        )
-        self.controller.showtime_set_requested.connect(
-            self.transport.set_showtime
-        )
         # Companion vraagt save (workspace-name-tile = save-knop).
+        # action_save bestaat al op self, dus deze hookup mag hier — geen
+        # afhankelijkheid op _build_ui()-widgets.
         self.controller.save_requested.connect(self.action_save)
         # NB. controller.playhead_changed → cue_list.set_playhead wordt
         # ná _build_ui() aangesloten, want de cue_list bestaat hier nog
-        # niet.
+        # niet. Hetzelfde geldt voor showtime_toggle_requested en
+        # showtime_set_requested — die raken self.transport en moeten
+        # dus ook na de UI-build aansluiten.
 
         # Engine status registreren
         register_audio_status(self.controller.audio)
@@ -174,6 +169,17 @@ class MainWindow(QMainWindow):
         # de cuelist syncen we hier alsnog zodat 't visueel klopt. Pas
         # nu aansluitbaar omdat cue_list door _build_ui() is gemaakt.
         self.controller.playhead_changed.connect(self.cue_list.set_playhead)
+        # OSC-driven showtime-lock — Companion module schakelt 'm aan/uit
+        # via deze signals. transport.set_showtime houdt de QPushButton-
+        # state in sync, en die emit op z'n beurt _on_showtime_toggled.
+        # Deze hookup MOET na _build_ui() omdat self.transport pas dáár
+        # bestaat.
+        self.controller.showtime_toggle_requested.connect(
+            lambda: self.transport.set_showtime(not self._showtime)
+        )
+        self.controller.showtime_set_requested.connect(
+            self.transport.set_showtime
+        )
 
         # Vensterpositie + -grootte herstellen (na _build_ui zodat de child-
         # widgets bestaan en de splitter z'n geometrie krijgt).
