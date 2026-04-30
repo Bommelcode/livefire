@@ -57,6 +57,13 @@ class PlaybackController(QObject):
     # /livefire/snapshot/please (zie _handle_livefire_command). MainWindow
     # luistert hier en duwt _broadcast_cuelist_snapshot.
     snapshot_requested = pyqtSignal()
+    # Companion (of een andere OSC-source) wil de showtime-lock toggelen.
+    # MainWindow inverteert z'n eigen _showtime omdat die state daar leeft.
+    showtime_toggle_requested = pyqtSignal()
+    # Hetzelfde maar dan met een expliciete waarde (1 = aan, 0 = uit).
+    # Bedoeld voor scripted scenario's waar je expliciet wilt zetten i.p.v.
+    # toggelen — bv. "schakel showtime ALTIJD aan voor een bepaalde cue".
+    showtime_set_requested = pyqtSignal(bool)
     # Wanneer een Network-cue's OSC-send faalt (lege/ongeldige address,
     # python-osc niet beschikbaar, enz.), emit (cue_id, error_message).
     # De UI kan zich hieraan abonneren om de operator te waarschuwen.
@@ -279,6 +286,14 @@ class PlaybackController(QObject):
             # hele cuelist. We laten 't aan MainWindow over via 't signal
             # zodat de controller niet hoeft te weten van OscFeedback.
             self.snapshot_requested.emit()
+            return
+        if address == "/livefire/showtime/toggle":
+            # MainWindow inverteert z'n showtime-state.
+            self.showtime_toggle_requested.emit()
+            return
+        if address == "/livefire/showtime/set":
+            if args:
+                self.showtime_set_requested.emit(bool(args[0]))
             return
         # /livefire/fire/<cue_number> — match op cue.cue_number (vrij
         # tekstveld; we vergelijken case-sensitive).
