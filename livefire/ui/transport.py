@@ -5,11 +5,20 @@ from __future__ import annotations
 
 from typing import Callable
 
-from PyQt6.QtCore import pyqtSignal, Qt, QTimer
-from PyQt6.QtGui import QFont
+from pathlib import Path
+
+from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QSize
+from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QLabel, QFrame
 
 from .style import ACCENT, TEXT_DIM
+
+
+# Resource-paths voor de lock-icons. ``livefire/resources/icons/`` zit
+# in de package zodat 'ie meereist met de installer.
+_ICONS_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
+_ICON_LOCK_OPEN = _ICONS_DIR / "lock-open.png"
+_ICON_LOCK_CLOSED = _ICONS_DIR / "lock-closed.png"
 
 
 CountdownSource = Callable[[], "tuple[str, float, bool] | None"]
@@ -53,7 +62,7 @@ class TransportWidget(QWidget):
         # Bevriest destructieve UI-acties (Delete, drag-reorder, inspector-
         # edits) zodra het publiek binnen is. GO en Stop All blijven altijd
         # werken — dit is geen freeze van de show, alleen van de editor.
-        self.btn_showtime = QPushButton("🔓 Showtime")
+        self.btn_showtime = QPushButton(" Showtime")
         self.btn_showtime.setObjectName("showtimeButton")
         self.btn_showtime.setCheckable(True)
         # Match GO/Stop All — 90x32 min-size + 10pt bold, niet groter zodat
@@ -63,6 +72,17 @@ class TransportWidget(QWidget):
         showtime_font.setPointSize(10)
         showtime_font.setBold(True)
         self.btn_showtime.setFont(showtime_font)
+        # Cache de twee icon-states zodat we ze niet elke toggle opnieuw
+        # van disk hoeven te lezen. Pad valt terug op leeg-QIcon als 't
+        # bestand er niet is — dan toont Qt enkel de tekst, geen crash.
+        self._icon_lock_open = (
+            QIcon(str(_ICON_LOCK_OPEN)) if _ICON_LOCK_OPEN.is_file() else QIcon()
+        )
+        self._icon_lock_closed = (
+            QIcon(str(_ICON_LOCK_CLOSED)) if _ICON_LOCK_CLOSED.is_file() else QIcon()
+        )
+        self.btn_showtime.setIcon(self._icon_lock_open)
+        self.btn_showtime.setIconSize(QSize(18, 18))
         self.btn_showtime.setToolTip(
             "Showtime lock: blocks destructive edits (Delete, drag, "
             "inspector changes) so an accidental click can't break a "
@@ -151,9 +171,13 @@ class TransportWidget(QWidget):
             self.btn_showtime.setChecked(on)
 
     def _on_showtime_toggled(self, on: bool) -> None:
-        # Visuele feedback: gesloten slot + accent-kleur als 't aan staat,
-        # zodat de operator zonder twijfel ziet of de lock actief is.
-        self.btn_showtime.setText("🔒 Showtime" if on else "🔓 Showtime")
+        # Visuele feedback: gesloten slot-icoon als de lock aan staat,
+        # open slot wanneer 't uit is. De Qt :checked-pseudoclass kleurt
+        # de bg al lichter, dus de combinatie laat zonder twijfel zien
+        # of de lock actief is.
+        self.btn_showtime.setIcon(
+            self._icon_lock_closed if on else self._icon_lock_open
+        )
         self.showtime_toggled.emit(on)
 
     def flash_blocked(self, duration_ms: int = 1500) -> None:
