@@ -262,7 +262,11 @@ class MainWindow(QMainWindow):
         toolbar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         toolbar_scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         toolbar_scroll.setFixedHeight(self.cue_toolbar.sizeHint().height())
-        left_layout.addWidget(toolbar_scroll)
+        # Toolbar zit nu in de transport-bar (onder Showtime), niet meer
+        # boven de cuelist. Dat geeft de cuelist meer verticale ruimte en
+        # houdt alle "knoppen die acties doen" bij elkaar in 't bovenste
+        # paneel.
+        self.transport.set_cue_toolbar(toolbar_scroll)
 
         self.cue_list = CueListWidget(self.ws)
         self.cue_list.cue_selected.connect(self._on_cue_selected)

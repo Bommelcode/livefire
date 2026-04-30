@@ -243,10 +243,10 @@ def clock(d: ImageDraw.ImageDraw) -> None:
 
 
 def _lock_body(d: ImageDraw.ImageDraw, *, closed: bool) -> None:
-    """Hangslot — body onderaan, beugel bovenop. closed=True is een dicht
-    slot, closed=False een open slot (rechter-poot van de beugel zit
-    omhoog/los). Beide vullen 't W×W canvas evenredig zodat ze visueel
-    uitwisselbaar zijn op dezelfde knop."""
+    """Hangslot — body onderaan, beugel bovenop. closed=True = dicht slot;
+    closed=False = open slot, met de rechter-poot van de beugel omhoog
+    los én duidelijk afgekapt zodat de twee staten in één oogopslag te
+    onderscheiden zijn op een knop van ~18px."""
     cx = W // 2
     body_top = 70
     body_bottom = W - 24
@@ -268,38 +268,51 @@ def _lock_body(d: ImageDraw.ImageDraw, *, closed: bool) -> None:
         [cx - 3, cy_keyhole, cx + 3, cy_keyhole + 18],
         fill=(0, 0, 0, 0),
     )
-    # Beugel — gebogen "U" bovenop het body. closed = beide poten op de
-    # body. open = rechter-poot omhoog (slot is uit).
-    bracket_top = 24
-    bracket_radius = 26
-    bracket_inner_r = 16
-    bracket_cx = cx
-    bracket_cy = body_top + 2
-    # Outer arc
-    d.arc(
-        [bracket_cx - bracket_radius, bracket_top,
-         bracket_cx + bracket_radius, bracket_top + 2 * bracket_radius],
-        start=180, end=360, fill=WHITE, width=10,
-    )
-    # Linker poot — altijd recht omlaag tot de body
-    d.line(
-        [bracket_cx - bracket_radius, bracket_top + bracket_radius,
-         bracket_cx - bracket_radius, body_top + 4],
-        fill=WHITE, width=10,
-    )
+    # Beugel — getekend met een ring (outer ellipse - inner ellipse) zodat
+    # de boog dezelfde lijndikte heeft als de poten. We tekenen 'm in
+    # twee stappen: vol-witte buiten-ellips, dan transparant binnen-ellips.
+    bracket_outer_r = 30
+    bracket_inner_r = 18
+    bracket_cy = body_top - 4  # ring-center net boven de body
+    # Boundary van de buiten-ellips
+    outer_box = [
+        cx - bracket_outer_r, bracket_cy - bracket_outer_r,
+        cx + bracket_outer_r, bracket_cy + bracket_outer_r,
+    ]
+    inner_box = [
+        cx - bracket_inner_r, bracket_cy - bracket_inner_r,
+        cx + bracket_inner_r, bracket_cy + bracket_inner_r,
+    ]
     if closed:
-        # Rechter poot — recht omlaag, sluit aan op body
-        d.line(
-            [bracket_cx + bracket_radius, bracket_top + bracket_radius,
-             bracket_cx + bracket_radius, body_top + 4],
-            fill=WHITE, width=10,
+        # Volle ring bovenop het body. We tekenen 'm half (boven-helft)
+        # via pieslice: 180° → 360° = top-half in PIL's CW-conventie.
+        d.pieslice(outer_box, start=180, end=360, fill=WHITE)
+        d.pieslice(inner_box, start=180, end=360, fill=(0, 0, 0, 0))
+        # De ring heeft een onderste-rand die de body ontmoet; om geen
+        # gat te tonen tussen ring en body vullen we die strip.
+        d.rectangle(
+            [cx - bracket_outer_r, bracket_cy,
+             cx - bracket_inner_r, body_top + 2],
+            fill=WHITE,
+        )
+        d.rectangle(
+            [cx + bracket_inner_r, bracket_cy,
+             cx + bracket_outer_r, body_top + 2],
+            fill=WHITE,
         )
     else:
-        # Rechter poot — kort, los van het body (slot is open)
-        d.line(
-            [bracket_cx + bracket_radius, bracket_top + bracket_radius,
-             bracket_cx + bracket_radius, bracket_top + bracket_radius + 16],
-            fill=WHITE, width=10,
+        # Open: alleen de linker-helft van de bow blijft staan, en die
+        # is licht naar links gekanteld zodat 't onmiskenbaar 'open' is.
+        # Tekenen via pieslice 180° → 270° (linker-bovenhoek), plus een
+        # losse poot links omhoog.
+        d.pieslice(outer_box, start=180, end=315, fill=WHITE)
+        d.pieslice(inner_box, start=180, end=315, fill=(0, 0, 0, 0))
+        # Linker poot tussen ring-onderkant en body-bovenkant — vult de
+        # naadlijn netjes op.
+        d.rectangle(
+            [cx - bracket_outer_r, bracket_cy,
+             cx - bracket_inner_r, body_top + 2],
+            fill=WHITE,
         )
 
 
