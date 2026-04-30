@@ -127,13 +127,16 @@ QTreeWidget::item {{
     border-bottom: 1px solid #242424;
 }}
 
+/* Selectie-overlay is semi-transparant zodat de cue-color-tint die
+   QTreeWidgetItem.setBackground neerlegt door de selectie heen blijft
+   schijnen. Anders verdwijnt 'n oranje cue volledig zodra je 'm klikt. */
 QTreeWidget::item:selected {{
-    background: {SEL_BG};
+    background: rgba(58, 162, 230, 90);
     color: {TEXT};
 }}
 
 QTreeWidget::item:selected:!active {{
-    background: {SEL_BG};
+    background: rgba(58, 162, 230, 70);
     color: {TEXT};
 }}
 
