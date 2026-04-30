@@ -72,24 +72,39 @@ class Workspace:
     def descendants_of(self, group_id: str) -> list[Cue]:
         """Alle nakomelingen van een group, inclusief children-van-children
         (genest). Gebruikt voor stop-cascade en voor het bepalen van
-        'het einde van een group' bij playhead-advance."""
+        'het einde van een group' bij playhead-advance.
+
+        Cycle-veilig: parent_group_id-cycles in een corrupte workspace
+        zouden hier zonder visited-set tot een infinite loop leiden, en
+        bij een stop-cascade tot een stack-overflow."""
         result: list[Cue] = []
         stack = [group_id]
+        visited: set[str] = set()
         # We walken breadth-first zodat de output-volgorde overeenkomt
         # met de cuelist-volgorde (children komen direct na hun parent).
         while stack:
             gid = stack.pop(0)
+            if gid in visited:
+                continue
+            visited.add(gid)
             for c in self.cues:
                 if c.parent_group_id == gid:
+                    if c.id in visited:
+                        continue  # cycle: child wijst terug naar parent
                     result.append(c)
                     if c.cue_type == CueType.GROUP:
                         stack.append(c.id)
         return result
 
     def is_in_group(self, cue_id: str, group_id: str) -> bool:
-        """True als cue_id ergens onder group_id valt (recursief)."""
+        """True als cue_id ergens onder group_id valt (recursief).
+        Cycle-veilig met visited-set tegen kapotte workspaces."""
         cue = self.find(cue_id)
+        visited: set[str] = set()
         while cue is not None and cue.parent_group_id:
+            if cue.id in visited:
+                return False  # cycle gedetecteerd, niet onder group_id
+            visited.add(cue.id)
             if cue.parent_group_id == group_id:
                 return True
             cue = self.find(cue.parent_group_id)

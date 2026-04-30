@@ -18,6 +18,7 @@ Dit is de basis voor v0.3.x:
 from __future__ import annotations
 
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -257,6 +258,24 @@ class AudioEngine:
         self._stream: Optional["sd.OutputStream"] = None  # type: ignore[name-defined]
         self._started = False
         self._last_error: str = ""
+        # Decoded-samples cache: file_path (resolved abs str) → (samples, sr).
+        # Wordt gevuld door preload() — een achtergrondthread die sf.read
+        # uitvoert zodat play_file 0 ms hoeft te wachten op disk + decode.
+        # Alleen toegevoegd, nooit geëvicteerd; voor normale shows (≤100
+        # cues, ≤8 min, stereo float32) is dat een paar honderd MB.
+        self._decoded_cache: dict[str, tuple[np.ndarray, int]] = {}
+        self._decoded_lock = threading.Lock()
+        # Pending preloads — voorkomt dubbel-decode als preload() voor
+        # hetzelfde pad meerdere keren wordt aangeroepen.
+        self._preload_in_flight: set[str] = set()
+        # Bounded executor: bij workspace-load met 100+ audio-cues willen
+        # we niet 100 threads tegelijk decoderen — dat hamert de disk en
+        # zuipt geheugen. Vier parallel is een goede balans tussen warmte-
+        # snelheid en system-load. daemon=True zodat 'ie niet de exit
+        # blokkeert; close() ruimt 'm netjes op bij engine.stop().
+        self._preload_pool = ThreadPoolExecutor(
+            max_workers=4, thread_name_prefix="audio-preload",
+        )
 
     # ---- lifecycle ---------------------------------------------------------
 
@@ -317,7 +336,13 @@ class AudioEngine:
         was_started = self._started
         self.stop()
         self.device = device
-        if sample_rate is not None:
+        # Sample-rate verandering invalideert de gedecodeerde-samples cache:
+        # de samples zijn voor de oude rate geresampled. Verkeerd hergebruik
+        # speelt 't bestand op verkeerde pitch/snelheid. Beter alles weg
+        # gooien — preload() vult 'm vanzelf opnieuw bij volgende workspace.
+        if sample_rate is not None and sample_rate != self.sample_rate:
+            with self._decoded_lock:
+                self._decoded_cache.clear()
             self.sample_rate = sample_rate
         if not was_started:
             return True, ""
@@ -326,6 +351,67 @@ class AudioEngine:
         return True, ""
 
     # ---- playback ----------------------------------------------------------
+
+    def _cache_key(self, path: Path) -> str:
+        try:
+            return str(path.resolve())
+        except Exception:
+            return str(path)
+
+    def _decode(self, path: Path) -> tuple[np.ndarray, int] | None:
+        """Synchroon decode + resample naar engine-samplerate. Returnt None
+        bij fout (en zet self._last_error). Wordt zowel door preload() als
+        door play_file() (cache-miss-pad) gebruikt."""
+        try:
+            samples, file_sr = sf.read(  # type: ignore[union-attr]
+                str(path), dtype=DEFAULT_DTYPE, always_2d=True,
+            )
+        except Exception as e:
+            self._last_error = f"Kon bestand niet laden: {e}"
+            return None
+        if file_sr != self.sample_rate:
+            if not _RESAMPLE_OK:
+                self._last_error = (
+                    f"Bestand is {file_sr} Hz maar engine draait op "
+                    f"{self.sample_rate} Hz en scipy ontbreekt voor resampling"
+                )
+                return None
+            samples = _resample(samples, file_sr, self.sample_rate)
+        return samples, self.sample_rate
+
+    def preload(self, file_path: str | Path) -> None:
+        """Pre-decodeer een bestand naar de cache via de bounded executor.
+        Idempotent: re-aanroepen voor 'n al-gecached / al-bezig pad doet
+        niks. Faalt stil — als preload mislukt valt play_file later terug
+        op het synchrone pad. Geen returnwaarde; dit is fire-and-forget."""
+        if not self.available:
+            return
+        path = Path(file_path)
+        if not path.is_file():
+            return
+        key = self._cache_key(path)
+        with self._decoded_lock:
+            if key in self._decoded_cache or key in self._preload_in_flight:
+                return
+            self._preload_in_flight.add(key)
+
+        def _worker() -> None:
+            try:
+                result = self._decode(path)
+                if result is not None:
+                    with self._decoded_lock:
+                        self._decoded_cache[key] = result
+            finally:
+                with self._decoded_lock:
+                    self._preload_in_flight.discard(key)
+
+        try:
+            self._preload_pool.submit(_worker)
+        except RuntimeError:
+            # Pool is gesloten (bij shutdown). Vlag 'm uit pending zodat
+            # een latere preload-aanroep niet eeuwig "in-flight" blijft.
+            with self._decoded_lock:
+                self._preload_in_flight.discard(key)
 
     def play_file(
         self,
@@ -337,28 +423,28 @@ class AudioEngine:
         end_offset: float = 0.0,
         fade_in: float = 0.0,
     ) -> bool:
-        """Laadt het bestand, resamplet indien nodig, registreert de source."""
+        """Laadt het bestand, resamplet indien nodig, registreert de source.
+        Cache-hit (voorgedecodeerd via preload()) = direct registreren — geen
+        disk-I/O of decode op de fire-thread. Cache-miss = synchrone fallback;
+        de tweede keer hetzelfde pad is dan wel snel."""
         if not self.available:
             return False
         path = Path(file_path)
         if not path.is_file():
             self._last_error = f"Bestand niet gevonden: {path}"
             return False
-        try:
-            samples, file_sr = sf.read(str(path), dtype=DEFAULT_DTYPE, always_2d=True)  # type: ignore[union-attr]
-        except Exception as e:
-            self._last_error = f"Kon bestand niet laden: {e}"
-            return False
-
-        # Resample naar engine-samplerate indien nodig
-        if file_sr != self.sample_rate:
-            if not _RESAMPLE_OK:
-                self._last_error = (
-                    f"Bestand is {file_sr} Hz maar engine draait op {self.sample_rate} Hz "
-                    "en scipy ontbreekt voor resampling"
-                )
+        key = self._cache_key(path)
+        with self._decoded_lock:
+            cached = self._decoded_cache.get(key)
+        if cached is not None:
+            samples, _sr = cached
+        else:
+            decoded = self._decode(path)
+            if decoded is None:
                 return False
-            samples = _resample(samples, file_sr, self.sample_rate)
+            samples, _sr = decoded
+            with self._decoded_lock:
+                self._decoded_cache[key] = decoded
 
         source = AudioSource(
             cue_id=cue_id,
@@ -433,24 +519,44 @@ class AudioEngine:
     def _audio_callback(self, outdata, frames, time_info, status):
         # status bevat bv. output_underflow — we negeren het in de skeleton,
         # maar tonen 'm desgewenst via een latere diagnose-widget.
-        outdata.fill(0.0)
-        with self._lock:
-            sources = list(self._sources.items())
-        dead: list[str] = []
-        for cue_id, src in sources:
-            if src.finished:
-                dead.append(cue_id)
-                continue
-            buf = src.read(frames, self.channels)
-            outdata += buf
-            if src.finished:
-                dead.append(cue_id)
-        # Soft clip om digital overs te voorkomen bij overlappende cues
-        np.clip(outdata, -1.0, 1.0, out=outdata)
-        if dead:
+        # Iedere exception hier propageert naar PortAudio en aborteert de
+        # stream — wat resulteert in stilte voor de rest van de show. We
+        # vangen dus álles, schrijven 't naar _last_error en geven stilte
+        # voor dit ene block. Zo overleeft de stream één gebroken source.
+        try:
+            outdata.fill(0.0)
             with self._lock:
-                for cid in dead:
-                    self._sources.pop(cid, None)
+                sources = list(self._sources.items())
+            dead: list[str] = []
+            for cue_id, src in sources:
+                if src.finished:
+                    dead.append(cue_id)
+                    continue
+                try:
+                    buf = src.read(frames, self.channels)
+                    outdata += buf
+                except Exception as e:
+                    # Eén stuk source in de soep mag niet de hele mixer
+                    # neerhalen. Markeer 'm dood en ga door met de rest.
+                    self._last_error = f"audio source {cue_id}: {e}"
+                    dead.append(cue_id)
+                    continue
+                if src.finished:
+                    dead.append(cue_id)
+            # Soft clip om digital overs te voorkomen bij overlappende cues
+            np.clip(outdata, -1.0, 1.0, out=outdata)
+            if dead:
+                with self._lock:
+                    for cid in dead:
+                        self._sources.pop(cid, None)
+        except Exception as e:
+            # Onverwachte fout op het outer-niveau — geef stilte uit zodat
+            # de stream blijft draaien en de show niet kapot is.
+            self._last_error = f"audio callback: {e}"
+            try:
+                outdata.fill(0.0)
+            except Exception:
+                pass
 
 
 # ---- helpers ---------------------------------------------------------------

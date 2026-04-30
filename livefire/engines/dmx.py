@@ -488,8 +488,10 @@ class DmxEngine(QObject):
         next_tick = time.monotonic()
         while not self._stop_evt.is_set():
             now = time.monotonic()
+            # Stap 1: tick fades + chases en snapshot universe-buffers ONDER
+            # de lock. Geen socket-IO hier, anders blokkeert iedere Qt-call
+            # (play/stop/blackout/is_playing) tot de UDP-send terug is.
             with self._lock:
-                # Update fades + chases voor lopende cues
                 for handle in list(self._cues.values()):
                     universe = self._universes.get(handle.universe_key)
                     if universe is None:
@@ -498,14 +500,19 @@ class DmxEngine(QObject):
                         self._tick_fade(handle, now, universe.buffer)
                     elif handle.mode == "chase":
                         self._tick_chase(handle, now, universe.buffer)
-                # Push iedere universe
-                for u in self._universes.values():
-                    try:
-                        self._send_universe(u)
-                    except Exception as e:
-                        self._last_error = str(e)
-                        # Niet fataal — show kan doorlopen, maar UI horen
-                        self.send_failed.emit("", str(e))
+                # Pak een snapshot van iedere universe + buffer; we sturen
+                # 'm BUITEN de lock zodat een trage of geblokkeerde sendto
+                # de show niet bevriest.
+                snapshot = [(u, bytes(u.buffer)) for u in self._universes.values()]
+            # Stap 2: socket-IO buiten de lock. Iedere universe is een
+            # losse sendto — een fout op één raakt de andere niet.
+            for u, buf in snapshot:
+                try:
+                    self._send_universe(u, buf)
+                except Exception as e:
+                    self._last_error = str(e)
+                    # Niet fataal — show kan doorlopen, maar UI horen
+                    self.send_failed.emit("", str(e))
             # Wacht tot volgende tick
             next_tick += period
             sleep_s = next_tick - time.monotonic()
@@ -515,7 +522,10 @@ class DmxEngine(QObject):
                 # We liepen achter — reset zodat we niet eeuwig inhalen
                 next_tick = time.monotonic()
 
-    def _send_universe(self, universe: _Universe) -> None:
+    def _send_universe(self, universe: _Universe, buffer: bytes) -> None:
+        # Single-threaded path (alleen _send_loop roept 'm aan), dus de
+        # sequence-mutatie hier is veilig zonder lock. `buffer` is een
+        # bytes-snapshot van universe.buffer, gepakt onder de engine-lock.
         if self._sock is None:
             return
         universe.sequence = (universe.sequence + 1) & 0xFF
@@ -523,13 +533,13 @@ class DmxEngine(QObject):
             universe.sequence = 1  # Art-Net spec: 0 = sequencing disabled
         if universe.protocol == "artnet":
             packet = encode_artnet_dmx(
-                universe.number, universe.sequence, bytes(universe.buffer),
+                universe.number, universe.sequence, buffer,
             )
             host = universe.host or "<broadcast>"
             self._sock.sendto(packet, (host, universe.port))
         else:  # sacn
             packet = encode_sacn_dmx(
-                universe.number, universe.sequence, bytes(universe.buffer),
+                universe.number, universe.sequence, buffer,
             )
             host = universe.host or sacn_multicast_address(universe.number)
             self._sock.sendto(packet, (host, universe.port))
