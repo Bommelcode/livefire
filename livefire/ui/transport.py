@@ -154,6 +154,11 @@ class TransportWidget(QWidget):
         self._info_font = QFont("Segoe UI Light")
         self._info_font.setPointSize(self._info_font_pt)
 
+        # ---- LINKER kolom: NEXT (boven) + NOW PLAYING (onder) ---------
+        names_col = QVBoxLayout()
+        names_col.setContentsMargins(0, 0, 0, 0)
+        names_col.setSpacing(2)
+
         self.lbl_playhead = QLabel()
         self.lbl_playhead.setFont(self._info_font)
         self.lbl_playhead.setTextFormat(Qt.TextFormat.RichText)
@@ -161,12 +166,7 @@ class TransportWidget(QWidget):
         self.lbl_playhead.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
-        row1.addWidget(self.lbl_playhead, 2)
-
-        sep_next_now = QFrame()
-        sep_next_now.setFrameShape(QFrame.Shape.VLine)
-        sep_next_now.setFrameShadow(QFrame.Shadow.Sunken)
-        row1.addWidget(sep_next_now)
+        names_col.addWidget(self.lbl_playhead)
         # Initiële render zodat 't label niet leeg start.
         self.set_playhead(0, 0, "")
         # ACTIVE-label blijft achter als hidden widget — set_active_count
@@ -174,36 +174,42 @@ class TransportWidget(QWidget):
         self.lbl_active = QLabel()
         self.lbl_active.hide()
 
-        # NOW PLAYING tile — naam van de spelende cue.
         self.lbl_countdown_name = QLabel()
         self.lbl_countdown_name.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
         self.lbl_countdown_name.setFont(self._info_font)
         self.lbl_countdown_name.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_countdown_name.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
-        row1.addWidget(self.lbl_countdown_name, 2)
+        names_col.addWidget(self.lbl_countdown_name)
+        row1.addLayout(names_col, 3)
 
-        # Twee grote timers achter de naam — ELAPSED + REMAIN, monospace
-        # zodat de digits niet schokken bij elke tick. Font-size is
-        # responsive (zie _adjust_responsive_fonts).
+        sep_next_now = QFrame()
+        sep_next_now.setFrameShape(QFrame.Shape.VLine)
+        sep_next_now.setFrameShadow(QFrame.Shadow.Sunken)
+        row1.addWidget(sep_next_now)
+
+        # ---- RECHTER kolom: ELAPSED (boven) + REMAIN (onder) ----------
+        # Monospace zodat digits niet schokken op elke tick.
         self._timer_font_pt = 40  # base; resizeEvent past 'm aan
         self._timer_font = QFont("Consolas")
         self._timer_font.setPointSize(self._timer_font_pt)
         self._timer_font.setBold(True)
 
-        # Min-width per timer. Bij smaller venster shrinkt 'ie via 't
-        # font-size; min-width hier voorkomt 0px-collapse.
-        TIMER_MIN_W = 110
+        timers_col = QVBoxLayout()
+        timers_col.setContentsMargins(0, 0, 0, 0)
+        timers_col.setSpacing(2)
+
+        TIMER_MIN_W = 140
         self.lbl_elapsed = QLabel("—:—")
         self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_elapsed.setFont(self._timer_font)
         self.lbl_elapsed.setStyleSheet(f"color: {OK};")
         self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
         self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
-        row1.addWidget(self.lbl_elapsed)
+        timers_col.addWidget(self.lbl_elapsed)
 
         # Backwards-compat alias zodat bestaande code (autosave etc.) die
         # 'lbl_countdown' aanroept blijft werken — 't is nu de REMAIN-tile.
@@ -216,7 +222,9 @@ class TransportWidget(QWidget):
             "loop it counts up (prefix +)."
         )
         self.lbl_countdown.setMinimumWidth(TIMER_MIN_W)
-        row1.addWidget(self.lbl_countdown)
+        timers_col.addWidget(self.lbl_countdown)
+
+        row1.addLayout(timers_col, 1)
 
         outer.addLayout(row1)
 
@@ -297,7 +305,10 @@ class TransportWidget(QWidget):
             t = max(0.0, min(1.0, t))
             return int(round(value_min + t * (value_max - value_min)))
 
-        timer_pt = _scale(24, 64)
+        # Stacked layout — beide timers staan onder elkaar in dezelfde
+        # transport-rij, dus we cappen wat lager dan 'n single-row layout
+        # zou kunnen dragen. 18..40 pt past comfortabel in 'n ~100 px rij.
+        timer_pt = _scale(18, 40)
         if timer_pt != self._timer_font_pt:
             self._timer_font_pt = timer_pt
             self._timer_font.setPointSize(timer_pt)
