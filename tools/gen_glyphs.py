@@ -242,6 +242,40 @@ def clock(d: ImageDraw.ImageDraw) -> None:
     d.line([cx, cy, cx + 36, cy], fill=WHITE, width=6)
 
 
+def house(d: ImageDraw.ImageDraw) -> None:
+    # Home-glyph: dak (driehoek) + body (rechthoek) + deur (rechthoek-cutout
+    # die we als zwart-transparant tekenen). Klassieke home-icon-look.
+    cx = W // 2
+    # Dak — driehoek bovenaan
+    roof_top_y = 22
+    roof_base_y = 64
+    roof_half_w = 56
+    d.polygon(
+        [
+            (cx - roof_half_w, roof_base_y),
+            (cx + roof_half_w, roof_base_y),
+            (cx, roof_top_y),
+        ],
+        fill=WHITE,
+    )
+    # Body — rechthoek onder het dak (iets smaller dan dak-base zodat
+    # 't dak duidelijk overhangt)
+    body_left = cx - 44
+    body_right = cx + 44
+    body_top = 60
+    body_bottom = W - 22
+    d.rectangle(
+        [body_left, body_top, body_right, body_bottom], fill=WHITE,
+    )
+    # Deur — uitgespaard zodat 't huis 'n eigen silhouet houdt
+    door_w = 20
+    door_top = W // 2 + 6
+    d.rectangle(
+        [cx - door_w // 2, door_top, cx + door_w // 2, body_bottom],
+        fill=(0, 0, 0, 0),
+    )
+
+
 # ---- runner -------------------------------------------------------------
 
 
@@ -263,6 +297,7 @@ GLYPHS = [
     ("group", folder),
     ("standby", standby_circle),
     ("wait", clock),
+    ("home", house),
 ]
 
 

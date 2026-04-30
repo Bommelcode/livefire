@@ -248,6 +248,7 @@ class OscFeedbackEngine(QObject):
             "/livefire/showtime_locked",
             1 if snap.get("showtime_locked", False) else 0,
         )
+        self.send("/livefire/version", str(snap.get("version", "")))
 
 
 def register_status(engine: OscFeedbackEngine | None = None) -> None:
