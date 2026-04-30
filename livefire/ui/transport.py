@@ -70,7 +70,13 @@ class TransportWidget(QWidget):
         outer.setSpacing(4)
 
         # ---- ROW 1 — transport-balk (alle controls + countdown) --------
-        row1 = QHBoxLayout()
+        # Wrap in 'n widget met max-height = GO/Stop hoogte (80) zodat de
+        # rij nooit hoger wordt dan de primaire knoppen. Ook al rendert 'n
+        # font groter, de label clipt liever dan dat 't de header strekt.
+        row1_widget = QWidget()
+        row1_widget.setMaximumHeight(80)
+        row1 = QHBoxLayout(row1_widget)
+        row1.setContentsMargins(0, 0, 0, 0)
         row1.setSpacing(8)
 
         # Beide knoppen identieke fixed-width zodat ze visueel gelijk zijn.
@@ -226,7 +232,7 @@ class TransportWidget(QWidget):
 
         row1.addLayout(timers_col, 1)
 
-        outer.addLayout(row1)
+        outer.addWidget(row1_widget)
 
         # ---- ROW 2 — cue-toolbar over volle breedte --------------------
         # MainWindow injecteert de eigenlijke widget via set_cue_toolbar();
@@ -305,16 +311,17 @@ class TransportWidget(QWidget):
             t = max(0.0, min(1.0, t))
             return int(round(value_min + t * (value_max - value_min)))
 
-        # Stacked layout — beide timers staan onder elkaar in dezelfde
-        # transport-rij, dus we cappen wat lager dan 'n single-row layout
-        # zou kunnen dragen. 18..40 pt past comfortabel in 'n ~100 px rij.
-        timer_pt = _scale(18, 40)
+        # Stacked timers in 'n 80-px rij (= GO/Stop hoogte). Elk timer-
+        # label heeft ~38 px verticaal beschikbaar, dus 22..32 pt is 't
+        # praktische bereik voor Consolas Bold. Boven 32 pt rendert 't
+        # buiten de row.
+        timer_pt = _scale(22, 32)
         if timer_pt != self._timer_font_pt:
             self._timer_font_pt = timer_pt
             self._timer_font.setPointSize(timer_pt)
             self.lbl_elapsed.setFont(self._timer_font)
             self.lbl_countdown.setFont(self._timer_font)
-        info_pt = _scale(11, 22)
+        info_pt = _scale(9, 13)
         if info_pt != self._info_font_pt:
             self._info_font_pt = info_pt
             self._info_font.setPointSize(info_pt)
