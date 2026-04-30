@@ -167,7 +167,25 @@ class PlaybackController(QObject):
 
         Pakt de audio-cue in 'action'-fase met de grootste resterende tijd.
         """
-        best: tuple[str, float, bool] | None = None
+        info = self._primary_running_info()
+        if info is None:
+            return None
+        return (info["label"], info["seconds"], info["is_countdown"])
+
+    def primary_elapsed(self) -> float | None:
+        """Elapsed-tijd in seconden van dezelfde cue die ``primary_countdown``
+        drijft. Bij een aftellende audio-cue groeit deze van 0 → duration;
+        bij een oneindige loop groeit 'ie ongebonden door."""
+        info = self._primary_running_info()
+        if info is None:
+            return None
+        return info["elapsed"]
+
+    def _primary_running_info(self) -> dict | None:
+        """Gedeelde helper voor primary_countdown en primary_elapsed.
+        Retourneert ``{label, seconds, is_countdown, elapsed}`` voor de
+        cue die de transport-display drijft, of None."""
+        best: dict | None = None
         best_remaining = -1.0
         for r in self._running.values():
             if r.phase != "action":
@@ -180,7 +198,10 @@ class PlaybackController(QObject):
                 remaining = max(0.0, r.action_duration - elapsed)
                 if remaining > best_remaining:
                     best_remaining = remaining
-                    best = (label, remaining, True)
+                    best = {
+                        "label": label, "seconds": remaining,
+                        "is_countdown": True, "elapsed": elapsed,
+                    }
             else:
                 src_remaining = self.audio.get_remaining(r.cue.id)
                 if src_remaining is None:
@@ -189,11 +210,17 @@ class PlaybackController(QObject):
                     # Oneindige loop — count-up
                     if elapsed > best_remaining:
                         best_remaining = elapsed
-                        best = (label, elapsed, False)
+                        best = {
+                            "label": label, "seconds": elapsed,
+                            "is_countdown": False, "elapsed": elapsed,
+                        }
                 else:
                     if src_remaining > best_remaining:
                         best_remaining = src_remaining
-                        best = (label, src_remaining, True)
+                        best = {
+                            "label": label, "seconds": src_remaining,
+                            "is_countdown": True, "elapsed": elapsed,
+                        }
         return best
 
     # ---- trigger-matching --------------------------------------------------

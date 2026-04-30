@@ -20,6 +20,7 @@ Adres-schema (verzonden vanaf liveFire → Companion):
 * ``/livefire/remaining`` (float) — seconden, negatief bij count-up
 * ``/livefire/remaining/label`` (string) — naam van de cue die countdown drijft
 * ``/livefire/countdown_active`` (int) — 1=countdown, 0=count-up/idle
+* ``/livefire/elapsed`` (float) — elapsed seconds van de spelende cue
 * ``/livefire/cue/<cue_number>/state`` (string) — idle / running / finished
 * ``/livefire/cue/<cue_number>/name`` (string)
 * ``/livefire/cue/<cue_number>/type`` (string) — Audio / Video / etc.
@@ -221,6 +222,7 @@ class OscFeedbackEngine(QObject):
             "/livefire/countdown_active",
             1 if snap.get("countdown_active", False) else 0,
         )
+        self.send("/livefire/elapsed", float(snap.get("elapsed", 0.0)))
 
 
 def register_status(engine: OscFeedbackEngine | None = None) -> None:

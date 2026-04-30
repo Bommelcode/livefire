@@ -549,6 +549,7 @@ class MainWindow(QMainWindow):
             phn = self.ws.cues[playhead].name or self.ws.cues[playhead].cue_number
         else:
             phn = ""
+        elapsed = self.controller.primary_elapsed() or 0.0
         return {
             "playhead": playhead,
             "playhead_total": total,
@@ -557,6 +558,7 @@ class MainWindow(QMainWindow):
             "remaining": remaining,
             "remaining_label": remaining_label,
             "countdown_active": countdown_active,
+            "elapsed": elapsed,
         }
 
     def _on_state_change_for_feedback(self, cue_id: str) -> None:
