@@ -9,11 +9,94 @@ volledige naam + sneltoets via tooltip."""
 
 from __future__ import annotations
 
-from PyQt6.QtCore import pyqtSignal, Qt, QPointF, QRectF, QSize
+from PyQt6.QtCore import pyqtSignal, Qt, QPointF, QRect, QRectF, QSize
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygonF
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QPushButton, QFrame,
+    QWidget, QHBoxLayout, QPushButton, QFrame, QLayout, QSizePolicy,
 )
+
+
+class FlowLayout(QLayout):
+    """Wrap-aware horizontale layout: knoppen vloeien naar de volgende
+    regel als ze niet meer in de beschikbare breedte passen. Canonical
+    PyQt-pattern (zie Qt's eigen FlowLayout-voorbeeld) — geen externe
+    dep, ~50 regels.
+
+    Gebruikt door de cue-toolbar zodat 'ie netjes over 2 regels gaat
+    bij smalle vensters i.p.v. te overlappen met buurelementen."""
+
+    def __init__(self, parent=None, margin: int = 0, spacing: int = 4):
+        super().__init__(parent)
+        if parent is not None:
+            self.setContentsMargins(margin, margin, margin, margin)
+        self.setSpacing(spacing)
+        self._items: list = []
+
+    def __del__(self):  # noqa: D401 — Qt convention
+        while self.count():
+            self.takeAt(0)
+
+    def addItem(self, item):  # type: ignore[override]
+        self._items.append(item)
+
+    def count(self):  # type: ignore[override]
+        return len(self._items)
+
+    def itemAt(self, index):  # type: ignore[override]
+        if 0 <= index < len(self._items):
+            return self._items[index]
+        return None
+
+    def takeAt(self, index):  # type: ignore[override]
+        if 0 <= index < len(self._items):
+            return self._items.pop(index)
+        return None
+
+    def expandingDirections(self):  # type: ignore[override]
+        return Qt.Orientation(0)
+
+    def hasHeightForWidth(self):  # type: ignore[override]
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # type: ignore[override]
+        return self._do_layout(QRect(0, 0, width, 0), test_only=True)
+
+    def setGeometry(self, rect):  # type: ignore[override]
+        super().setGeometry(rect)
+        self._do_layout(rect, test_only=False)
+
+    def sizeHint(self):  # type: ignore[override]
+        return self.minimumSize()
+
+    def minimumSize(self):  # type: ignore[override]
+        size = QSize()
+        for item in self._items:
+            size = size.expandedTo(item.minimumSize())
+        m = self.contentsMargins()
+        size += QSize(m.left() + m.right(), m.top() + m.bottom())
+        return size
+
+    def _do_layout(self, rect: QRect, *, test_only: bool) -> int:
+        m = self.contentsMargins()
+        effective = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
+        x = effective.x()
+        y = effective.y()
+        line_height = 0
+        spacing = self.spacing()
+        for item in self._items:
+            hint = item.sizeHint()
+            next_x = x + hint.width() + spacing
+            if next_x - spacing > effective.right() and line_height > 0:
+                # Niet meer plek op deze regel → wrap
+                x = effective.x()
+                y = y + line_height + spacing
+                next_x = x + hint.width() + spacing
+                line_height = 0
+            if not test_only:
+                item.setGeometry(QRect(x, y, hint.width(), hint.height()))
+            x = next_x
+            line_height = max(line_height, hint.height())
+        return y + line_height - rect.y() + m.bottom()
 
 from ..cues import CueType
 from ..i18n import t
@@ -242,9 +325,17 @@ class CueToolbar(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        lay = QHBoxLayout(self)
-        lay.setContentsMargins(6, 4, 6, 4)
-        lay.setSpacing(4)
+        # FlowLayout zodat de knoppen netjes wrappen wanneer 't venster
+        # te smal wordt voor één regel. setContentsMargins direct via de
+        # constructor, want het FlowLayout-class accepteert 'm zo.
+        lay = FlowLayout(self, margin=4, spacing=4)
+        # Min-width op nul zodat de toolbar mag krimpen — anders houdt
+        # 'ie z'n grootste-regel-breedte vast en pusht 'ie de transport
+        # over Stop All heen.
+        self.setMinimumWidth(0)
+        self.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.MinimumExpanding,
+        )
 
         for ct in _CUE_TYPE_ORDER:
             btn = QPushButton()
@@ -289,8 +380,8 @@ class CueToolbar(QWidget):
         btn_down.setMinimumHeight(26)
         btn_down.clicked.connect(self.move_down.emit)
         lay.addWidget(btn_down)
-
-        lay.addStretch(1)
+        # FlowLayout heeft geen addStretch — het wrapt vanzelf naar de
+        # volgende regel als items niet meer passen.
 
     @staticmethod
     def _separator() -> QFrame:

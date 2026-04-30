@@ -251,22 +251,11 @@ class MainWindow(QMainWindow):
         self.cue_toolbar.renumber.connect(self.action_renumber)
         self.cue_toolbar.move_up.connect(lambda: self.cue_list.move_selected(-1))
         self.cue_toolbar.move_down.connect(lambda: self.cue_list.move_selected(1))
-        # Wikkel de toolbar in een horizontale scroll-area zodat 'ie geen
-        # minimum-breedte oplegt aan de splitter — anders blokkeert de
-        # som van de 13 knoppen het slepen van de splitter ("hortend").
-        toolbar_scroll = QScrollArea()
-        toolbar_scroll.setWidget(self.cue_toolbar)
-        toolbar_scroll.setWidgetResizable(True)
-        toolbar_scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        toolbar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        toolbar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        toolbar_scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        toolbar_scroll.setFixedHeight(self.cue_toolbar.sizeHint().height())
-        # Toolbar zit nu in de transport-bar (onder Showtime), niet meer
-        # boven de cuelist. Dat geeft de cuelist meer verticale ruimte en
-        # houdt alle "knoppen die acties doen" bij elkaar in 't bovenste
-        # paneel.
-        self.transport.set_cue_toolbar(toolbar_scroll)
+        # Toolbar zit nu in de transport-bar (onder Showtime, naar rechts
+        # uitlopend) en gebruikt intern een FlowLayout — die wrapt knoppen
+        # automatisch naar 'n volgende regel als 't venster smaller wordt.
+        # Geen QScrollArea-wrapper meer nodig.
+        self.transport.set_cue_toolbar(self.cue_toolbar)
 
         self.cue_list = CueListWidget(self.ws)
         self.cue_list.cue_selected.connect(self._on_cue_selected)
