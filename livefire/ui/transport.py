@@ -140,8 +140,6 @@ class TransportWidget(QWidget):
         self.lbl_active.setToolTip("Number of cues currently playing")
         row1.addWidget(self.lbl_active)
 
-        row1.addStretch(1)
-
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
         cd_font = QFont()
@@ -154,10 +152,12 @@ class TransportWidget(QWidget):
             "Remaining time of the longest-running audio cue. With infinite "
             "loop it counts up (prefix +)."
         )
-        self.lbl_countdown.setMinimumWidth(280)
-        row1.addWidget(self.lbl_countdown)
-
-        row1.addStretch(1)
+        # Geen vaste min-width — laat 'm krimpen wanneer 't venster smal is.
+        # Boven 't auto-shrink-pad past 'ie wel de 56 pt-font zelf aan.
+        self.lbl_countdown.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
+        )
+        row1.addWidget(self.lbl_countdown, 2)  # stretch=2 → claimt 't centrum
 
         self.lbl_countdown_name = QLabel("")
         self.lbl_countdown_name.setAlignment(
@@ -167,8 +167,11 @@ class TransportWidget(QWidget):
         name_font.setPointSize(10)
         self.lbl_countdown_name.setFont(name_font)
         self.lbl_countdown_name.setStyleSheet(f"color: {TEXT_DIM};")
-        self.lbl_countdown_name.setMinimumWidth(180)
-        row1.addWidget(self.lbl_countdown_name)
+        # Idem: laat de naam krimpen i.p.v. 'n vaste 180 px af te dwingen.
+        self.lbl_countdown_name.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
+        )
+        row1.addWidget(self.lbl_countdown_name, 1)
 
         outer.addLayout(row1)
 
