@@ -53,6 +53,10 @@ class PlaybackController(QObject):
     # te syncen. Niet geëmit door go() omdat MainWindow.action_go z'n
     # eigen sync-pad heeft (en we anders een loop met cuelist krijgen).
     playhead_changed = pyqtSignal(int)
+    # Companion-module vraagt om een verse cuelist-snapshot via
+    # /livefire/snapshot/please (zie _handle_livefire_command). MainWindow
+    # luistert hier en duwt _broadcast_cuelist_snapshot.
+    snapshot_requested = pyqtSignal()
     # Wanneer een Network-cue's OSC-send faalt (lege/ongeldige address,
     # python-osc niet beschikbaar, enz.), emit (cue_id, error_message).
     # De UI kan zich hieraan abonneren om de operator te waarschuwen.
@@ -263,6 +267,12 @@ class PlaybackController(QObject):
         if address == "/livefire/playhead/goto":
             if args and isinstance(args[0], (int, float)):
                 self.set_playhead(int(args[0]))
+            return
+        if address == "/livefire/snapshot/please":
+            # Companion vraagt na (re)connect een verse snapshot van de
+            # hele cuelist. We laten 't aan MainWindow over via 't signal
+            # zodat de controller niet hoeft te weten van OscFeedback.
+            self.snapshot_requested.emit()
             return
         # /livefire/fire/<cue_number> — match op cue.cue_number (vrij
         # tekstveld; we vergelijken case-sensitive).
