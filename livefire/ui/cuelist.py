@@ -7,7 +7,7 @@ from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QBrush, QColor
 from PyQt6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QHeaderView, QAbstractItemView,
-    QStyledItemDelegate, QStyle, QComboBox, QMenu,
+    QStyledItemDelegate, QStyle, QStyleOptionViewItem, QComboBox, QMenu,
 )
 
 from ..cues import Cue, CueType, ContinueMode
@@ -28,16 +28,36 @@ _COL_CONTINUE = 4
 class _CueRowDelegate(QStyledItemDelegate):
     """Schildert zelf de per-cel BackgroundRole-brush. Nodig omdat Qt's
     stylesheet voor ``QTreeWidget::item`` (padding/border) normaal
-    ``QTreeWidgetItem.setBackground()`` negeert."""
+    ``QTreeWidgetItem.setBackground()`` negeert.
+
+    Op selectie tekenen we de cue-tint ALTIJD, en voegen we zelf een
+    semi-transparante selection-overlay toe — dat is de enige manier
+    om de cue-color door een geselecteerde rij heen te laten schijnen
+    (Qt's QSS :selected heeft 'n solid bg die alpha negeert)."""
+
+    _SELECTION_OVERLAY = QColor(58, 162, 230, 90)  # rgba SEL_BG translucent
 
     def paint(self, painter, option, index):
         bg = index.data(Qt.ItemDataRole.BackgroundRole)
+        # Cue-tint áltijd tekenen, ook bij selectie. Daarna strippen we
+        # de Selected-state uit een kopie van option zodat super().paint()
+        # geen solid bg meer over onze tint heen schildert.
+        selected = bool(option.state & QStyle.StateFlag.State_Selected)
         if isinstance(bg, QBrush) and bg.color().alpha() > 0:
-            if not (option.state & QStyle.StateFlag.State_Selected):
-                painter.save()
-                painter.fillRect(option.rect, bg)
-                painter.restore()
-        super().paint(painter, option, index)
+            painter.save()
+            painter.fillRect(option.rect, bg)
+            painter.restore()
+        if selected:
+            opt = QStyleOptionViewItem(option)
+            opt.state &= ~QStyle.StateFlag.State_Selected
+            super().paint(painter, opt, index)
+            # Eigen overlay — translucent blauw zodat de cue-color
+            # zichtbaar blijft door de selectie heen.
+            painter.save()
+            painter.fillRect(option.rect, self._SELECTION_OVERLAY)
+            painter.restore()
+        else:
+            super().paint(painter, option, index)
 
 
 class _ContinueDelegate(QStyledItemDelegate):
