@@ -13,7 +13,10 @@ from PIL import Image, ImageDraw, ImageFilter
 
 SIZE = 144
 WHITE = (255, 255, 255, 255)
+RED = (217, 83, 79, 255)  # match style.ERR
 W = SIZE
+# Wordt door _lock_body gebruikt; default = WHITE, rode variant override't.
+_LOCK_FILL = WHITE
 
 
 def _new() -> Image.Image:
@@ -257,18 +260,18 @@ def _draw_bow_closed(d: ImageDraw.ImageDraw, body_top: int) -> None:
         cx - bracket_inner_r, bracket_cy - bracket_inner_r,
         cx + bracket_inner_r, bracket_cy + bracket_inner_r,
     ]
-    d.pieslice(outer_box, start=180, end=360, fill=WHITE)
+    d.pieslice(outer_box, start=180, end=360, fill=_LOCK_FILL)
     d.pieslice(inner_box, start=180, end=360, fill=(0, 0, 0, 0))
     # Linker + rechter flank tussen ring-onderkant en body-bovenkant
     d.rectangle(
         [cx - bracket_outer_r, bracket_cy,
          cx - bracket_inner_r, body_top + 2],
-        fill=WHITE,
+        fill=_LOCK_FILL,
     )
     d.rectangle(
         [cx + bracket_inner_r, bracket_cy,
          cx + bracket_outer_r, body_top + 2],
-        fill=WHITE,
+        fill=_LOCK_FILL,
     )
 
 
@@ -284,7 +287,7 @@ def _lock_body(d: ImageDraw.ImageDraw, *, closed: bool) -> None:
     # Body — afgeronde rechthoek
     d.rounded_rectangle(
         [body_left, body_top, body_right, body_bottom],
-        radius=10, fill=WHITE,
+        radius=10, fill=_LOCK_FILL,
     )
     # Sleutelgat — kleine cirkel + verticale streep — uitgespaard zodat
     # 't gaatje contrasteert tegen de witte body.
@@ -328,6 +331,19 @@ def lock_closed(d: ImageDraw.ImageDraw) -> None:
 
 def lock_open(d: ImageDraw.ImageDraw) -> None:
     _lock_body(d, closed=False)
+
+
+def lock_closed_red(d: ImageDraw.ImageDraw) -> None:
+    """Rode versie van het dichte slot — gebruikt voor de showtime-knop
+    in z'n locked-state. Module-level _LOCK_FILL wordt tijdelijk op
+    RED gezet en daarna teruggezet."""
+    global _LOCK_FILL
+    prev = _LOCK_FILL
+    _LOCK_FILL = RED
+    try:
+        _lock_body(d, closed=True)
+    finally:
+        _LOCK_FILL = prev
 
 
 def cart_wall(d: ImageDraw.ImageDraw) -> None:
@@ -412,6 +428,7 @@ GLYPHS = [
     ("home", house),
     ("cart_wall", cart_wall),
     ("lock_closed", lock_closed),
+    ("lock_closed_red", lock_closed_red),
     ("lock_open", lock_open),
 ]
 

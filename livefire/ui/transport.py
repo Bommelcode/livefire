@@ -22,6 +22,7 @@ from .style import ACCENT, ACCENT_ALT, TEXT_DIM, OK
 _ICONS_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 _ICON_LOCK_OPEN = _ICONS_DIR / "lock-open.png"
 _ICON_LOCK_CLOSED = _ICONS_DIR / "lock-closed.png"
+_ICON_LOCK_CLOSED_RED = _ICONS_DIR / "lock-closed-red.png"
 
 
 CountdownSource = Callable[[], "tuple[str, float, bool] | None"]
@@ -104,8 +105,14 @@ class TransportWidget(QWidget):
         self._icon_lock_open = (
             QIcon(str(_ICON_LOCK_OPEN)) if _ICON_LOCK_OPEN.is_file() else QIcon()
         )
+        # Locked-state pakt de RODE variant zodat alleen de glyph rood kleurt
+        # i.p.v. de hele knop-achtergrond. Bg blijft default (donker).
         self._icon_lock_closed = (
-            QIcon(str(_ICON_LOCK_CLOSED)) if _ICON_LOCK_CLOSED.is_file() else QIcon()
+            QIcon(str(_ICON_LOCK_CLOSED_RED))
+            if _ICON_LOCK_CLOSED_RED.is_file()
+            else QIcon(str(_ICON_LOCK_CLOSED))
+            if _ICON_LOCK_CLOSED.is_file()
+            else QIcon()
         )
         self.btn_showtime.setIcon(self._icon_lock_open)
         self.btn_showtime.setIconSize(QSize(24, 24))
@@ -193,14 +200,18 @@ class TransportWidget(QWidget):
         timer_font.setPointSize(36)
         timer_font.setBold(True)
 
+        # Beide timers krijgen 'n vaste min-width zodat ze altijd zichtbaar
+        # zijn (anders verdwijnen ze naar 0 px omdat de NOW-PLAYING tile
+        # met stretch=1 alle ruimte opslokt). 140 px past 'm:ss\nXX:XX
+        # bij 36pt monospace. Verticale policy: Preferred zodat 'ie netjes
+        # uitgelijnd staat op de label-baseline.
+        TIMER_MIN_W = 140
         self.lbl_elapsed = QLabel("—:—")
         self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_elapsed.setFont(timer_font)
         self.lbl_elapsed.setStyleSheet(f"color: {OK};")
         self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
-        self.lbl_elapsed.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
-        )
+        self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
         row1.addWidget(self.lbl_elapsed)
 
         # Backwards-compat alias zodat bestaande code (autosave etc.) die
@@ -213,9 +224,7 @@ class TransportWidget(QWidget):
             "Remaining time of the longest-running audio cue. With infinite "
             "loop it counts up (prefix +)."
         )
-        self.lbl_countdown.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
-        )
+        self.lbl_countdown.setMinimumWidth(TIMER_MIN_W)
         row1.addWidget(self.lbl_countdown)
 
         outer.addLayout(row1)
@@ -311,23 +320,29 @@ class TransportWidget(QWidget):
         )
         self.showtime_toggled.emit(on)
 
-    def flash_blocked(self, duration_ms: int = 1500) -> None:
-        """Korte rode flash op de showtime-knop wanneer een edit geblockd
-        is. Override de globale stylesheet voor `duration_ms`, dan clear
-        de override en is de knop weer normaal. Idempotent — een tweede
-        call binnen het flash-window restart de timer netjes."""
-        self.btn_showtime.setStyleSheet(
-            "QPushButton#showtimeButton {"
-            "  background: #c0392b;"
-            "  color: white;"
-            "  border: 2px solid #ff6b5b;"
-            "  border-radius: 6px;"
-            "}"
-        )
-        QTimer.singleShot(
-            int(max(200, duration_ms)),
-            lambda: self.btn_showtime.setStyleSheet(""),
-        )
+    _FLASH_STYLE = (
+        "QPushButton#showtimeButton {"
+        "  background: #c0392b;"
+        "  color: white;"
+        "  border: 2px solid #ff6b5b;"
+        "  border-radius: 6px;"
+        "}"
+    )
+
+    def flash_blocked(self) -> None:
+        """Twee-keer-knipper-flash op de showtime-knop wanneer een edit
+        geblockd is. Cycle: rood (200 ms) → off (180 ms) → rood (200 ms)
+        → off. Een tweede call midden in 'n flash-cycle herstart van 0
+        zonder de UI te brokken (singleShots blijven gestapeld lopen
+        maar zetten de stijl idempotent)."""
+        on_style = self._FLASH_STYLE
+        btn = self.btn_showtime
+        # Twee korte pulsen — leesbaarder als 'attention-grabber' dan een
+        # statische rode kleur, vooral als de knop al rood is door :checked.
+        QTimer.singleShot(0, lambda: btn.setStyleSheet(on_style))
+        QTimer.singleShot(200, lambda: btn.setStyleSheet(""))
+        QTimer.singleShot(380, lambda: btn.setStyleSheet(on_style))
+        QTimer.singleShot(580, lambda: btn.setStyleSheet(""))
 
     # ---- countdown ---------------------------------------------------------
 
