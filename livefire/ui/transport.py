@@ -70,11 +70,11 @@ class TransportWidget(QWidget):
         outer.setSpacing(4)
 
         # ---- ROW 1 — transport-balk (alle controls + countdown) --------
-        # Wrapper-widget zodat outer.addWidget() z'n hoogte kan claimen
-        # (een raw QHBoxLayout heeft geen geometry van zichzelf). Geen
-        # maxHeight-cap — REMAIN mag op een breed scherm flink groter
-        # dan GO/Stop worden; dat is precies de QLab-stijl.
+        # Wrap in 'n widget met max-height = GO/Stop hoogte (80) zodat de
+        # rij nooit hoger wordt dan de primaire knoppen. Ook al rendert 'n
+        # font groter, de label clipt liever dan dat 't de header strekt.
         row1_widget = QWidget()
+        row1_widget.setMaximumHeight(80)
         row1 = QHBoxLayout(row1_widget)
         row1.setContentsMargins(0, 0, 0, 0)
         row1.setSpacing(8)
@@ -197,25 +197,28 @@ class TransportWidget(QWidget):
         sep_next_now.setFrameShadow(QFrame.Shadow.Sunken)
         row1.addWidget(sep_next_now)
 
-        # ---- CENTER — klassieke QLab-stijl: grote REMAIN, kleine ELAPSED
-        # Eén enorme countdown vult 't midden. Onder de countdown 'n klein
-        # 'elapsed 0:34'-label — minder prominent, geeft alleen contextuele
-        # informatie. Beide centrum-uitgelijnd, monospace zodat de digits
-        # niet schokken bij elke tick.
-        self._timer_font_pt = 56  # base; resizeEvent past 'm aan
+        # ---- RECHTER kolom: ELAPSED (boven) + REMAIN (onder) ----------
+        # Monospace zodat digits niet schokken op elke tick.
+        self._timer_font_pt = 40  # base; resizeEvent past 'm aan
         self._timer_font = QFont("Consolas")
         self._timer_font.setPointSize(self._timer_font_pt)
         self._timer_font.setBold(True)
 
-        self._elapsed_font_pt = 11  # base voor 't kleine elapsed-label
-        self._elapsed_font = QFont("Consolas")
-        self._elapsed_font.setPointSize(self._elapsed_font_pt)
+        timers_col = QVBoxLayout()
+        timers_col.setContentsMargins(0, 0, 0, 0)
+        timers_col.setSpacing(2)
 
-        center_col = QVBoxLayout()
-        center_col.setContentsMargins(0, 0, 0, 0)
-        center_col.setSpacing(0)
+        TIMER_MIN_W = 140
+        self.lbl_elapsed = QLabel("—:—")
+        self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_elapsed.setFont(self._timer_font)
+        self.lbl_elapsed.setStyleSheet(f"color: {OK};")
+        self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
+        self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
+        timers_col.addWidget(self.lbl_elapsed)
 
-        # Big REMAIN — was lbl_countdown; alias blijft voor bestaande code.
+        # Backwards-compat alias zodat bestaande code (autosave etc.) die
+        # 'lbl_countdown' aanroept blijft werken — 't is nu de REMAIN-tile.
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_countdown.setFont(self._timer_font)
@@ -224,18 +227,10 @@ class TransportWidget(QWidget):
             "Remaining time of the longest-running audio cue. With infinite "
             "loop it counts up (prefix +)."
         )
-        self.lbl_countdown.setMinimumWidth(160)
-        center_col.addWidget(self.lbl_countdown)
+        self.lbl_countdown.setMinimumWidth(TIMER_MIN_W)
+        timers_col.addWidget(self.lbl_countdown)
 
-        # Tiny ELAPSED-label, dimkleur — onder de countdown.
-        self.lbl_elapsed = QLabel("elapsed —:—")
-        self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_elapsed.setFont(self._elapsed_font)
-        self.lbl_elapsed.setStyleSheet(f"color: {TEXT_DIM};")
-        self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
-        center_col.addWidget(self.lbl_elapsed)
-
-        row1.addLayout(center_col, 2)
+        row1.addLayout(timers_col, 1)
 
         outer.addWidget(row1_widget)
 
@@ -316,20 +311,17 @@ class TransportWidget(QWidget):
             t = max(0.0, min(1.0, t))
             return int(round(value_min + t * (value_max - value_min)))
 
-        # Klassieke QLab-stijl: REMAIN = grote countdown midden in de row.
-        # Schaalt mee met breedte 36..72 pt. Elapsed blijft een klein
-        # caption-label van 10..14 pt.
-        timer_pt = _scale(36, 72)
+        # Stacked timers in 'n 80-px rij (= GO/Stop hoogte). Elk timer-
+        # label heeft ~38 px verticaal beschikbaar, dus 22..32 pt is 't
+        # praktische bereik voor Consolas Bold. Boven 32 pt rendert 't
+        # buiten de row.
+        timer_pt = _scale(22, 32)
         if timer_pt != self._timer_font_pt:
             self._timer_font_pt = timer_pt
             self._timer_font.setPointSize(timer_pt)
+            self.lbl_elapsed.setFont(self._timer_font)
             self.lbl_countdown.setFont(self._timer_font)
-        elapsed_pt = _scale(10, 14)
-        if elapsed_pt != self._elapsed_font_pt:
-            self._elapsed_font_pt = elapsed_pt
-            self._elapsed_font.setPointSize(elapsed_pt)
-            self.lbl_elapsed.setFont(self._elapsed_font)
-        info_pt = _scale(11, 18)
+        info_pt = _scale(9, 13)
         if info_pt != self._info_font_pt:
             self._info_font_pt = info_pt
             self._info_font.setPointSize(info_pt)
@@ -402,7 +394,7 @@ class TransportWidget(QWidget):
         elapsed = self._elapsed_source() if self._elapsed_source else None
         if info is None:
             self.lbl_countdown.setText("—:—")
-            self.lbl_elapsed.setText("elapsed —:—")
+            self.lbl_elapsed.setText("—:—")
             self.lbl_countdown_name.setText(
                 f'<span style="color:{TEXT_DIM};font-size:8pt;'
                 f'letter-spacing:1px;">NOW PLAYING</span><br>'
@@ -412,11 +404,8 @@ class TransportWidget(QWidget):
         name, seconds, is_countdown = info
         prefix = "" if is_countdown else "+"
         self.lbl_countdown.setText(f"{prefix}{_fmt_time(seconds)}")
-        # Klein elapsed-label met "elapsed"-prefix in dimkleur — geeft
-        # context zonder de prominente REMAIN te beconcurreren.
         self.lbl_elapsed.setText(
-            f"elapsed {_fmt_time(elapsed)}" if elapsed is not None
-            else "elapsed —:—"
+            _fmt_time(elapsed) if elapsed is not None else "—:—"
         )
         self.lbl_countdown_name.setText(
             f'<span style="color:{ACCENT};font-size:8pt;'
