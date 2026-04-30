@@ -95,9 +95,16 @@ class VideoEngine(QObject):
     """Beheert één VLC-Instance en een dict van playing cue → (player, window)."""
 
     cue_finished = pyqtSignal(str)   # cue_id — eindigt van nature
+    # Intern: libVLC's MediaPlayerEndReached event vuurt op een libVLC-
+    # thread; we emitten dit signal vanuit die thread en laten Qt's
+    # auto-connection 'm naar de Qt-mainthread routen via QueuedConnection.
+    # Veel veiliger dan QTimer.singleShot() vanuit een non-Qt thread,
+    # waar Qt geen runtime-garanties op geeft.
+    _vlc_end_reached = pyqtSignal(str)
 
     def __init__(self, parent: QObject | None = None):
         super().__init__(parent)
+        self._vlc_end_reached.connect(self._on_end_reached)
         self._instance: "vlc.Instance | None" = None
         if _VLC_OK:
             try:
@@ -323,9 +330,13 @@ class VideoEngine(QObject):
             except Exception:
                 pass
             em = player.event_manager()
+            # Emit signal vanuit de libVLC-callback thread; auto-connection
+            # naar _on_end_reached zorgt voor queued delivery in de Qt
+            # mainthread. Geen QTimer.singleShot meer hier — die is geen
+            # documented-safe pad vanuit een non-Qt thread.
             em.event_attach(
                 vlc.EventType.MediaPlayerEndReached,  # type: ignore[union-attr]
-                lambda _e, cid=cue_id: QTimer.singleShot(0, lambda: self._on_end_reached(cid)),
+                lambda _e, cid=cue_id: self._vlc_end_reached.emit(cid),
             )
         except Exception:
             return None

@@ -114,6 +114,12 @@ class PlaybackController(QObject):
         self.stop_all()
         self.workspace = ws
         self._playhead_index = 0
+        # Pre-decode alle audio-bestanden in de achtergrond, zodat fire = 0ms
+        # disk + decode latency. Bij grote workspaces wordt dit verspreid
+        # over de threads die preload() spawnt — geen UI-block.
+        for cue in ws.cues:
+            if cue.cue_type == CueType.AUDIO and cue.file_path:
+                self.audio.preload(cue.file_path)
 
     def shutdown(self) -> None:
         self._timer.stop()
@@ -338,7 +344,12 @@ class PlaybackController(QObject):
         cue.state = "running"
         self.cue_state_changed.emit(cue.id)
         self.running_changed.emit()
-        # pre_wait=0 wordt in _tick direct doorgeschakeld naar action
+        # pre_wait=0 (default): meteen doorschieten naar action zodat we
+        # niet tot de volgende _tick wachten — dat scheelt 0-20 ms tussen
+        # GO en hoorbaar audio. Voor pre_wait>0 laten we _tick het pad
+        # nemen, dan klopt de timing met monotonic() exact.
+        if cue.pre_wait <= 0:
+            self._begin_action(running)
 
     def _begin_action(self, r: _Running) -> None:
         cue = r.cue
@@ -355,7 +366,7 @@ class PlaybackController(QObject):
             # AUTO_CONTINUE moet ook nog werken zodat een blokkade niet
             # de hele chain breekt — behalve voor children van een
             # first-then-list-group; daar regelt _advance_group_chain.
-            if cue.continue_mode == ContinueMode.AUTO_CONTINUE and not in_group_chain:
+            if cue.continue_mode == ContinueMode.AUTO_CONTINUE and not r.in_group_chain:
                 self._advance_and_go()
             return
 
@@ -531,7 +542,7 @@ class PlaybackController(QObject):
         # eigen continue_mode mag de globale playhead niet doorduwen
         # voorbij de group, want de group heeft de playhead al na zichzelf
         # geplaatst en wij chaiñen de children intern via _group_chain.
-        if cue.continue_mode == ContinueMode.AUTO_CONTINUE and not in_group_chain:
+        if cue.continue_mode == ContinueMode.AUTO_CONTINUE and not r.in_group_chain:
             self._advance_and_go()
 
     def _advance_and_go(self) -> None:
