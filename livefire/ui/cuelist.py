@@ -48,17 +48,18 @@ class _ContinueDelegate(QStyledItemDelegate):
 
     def createEditor(self, parent, option, index):
         cb = QComboBox(parent)
-        # Forceer Fusion-style op de combo box zodat Qt-stylesheets ECHT
-        # de bg-kleur tekenen (Windows-native style negeert anders een
-        # widget-stylesheet van een combo box).
-        from PyQt6.QtWidgets import QStyleFactory
-        cb.setStyle(QStyleFactory.create("Fusion"))
+        cb.setObjectName("continueEditor")
         for mode in (ContinueMode.DO_NOT_CONTINUE,
                      ContinueMode.AUTO_CONTINUE,
                      ContinueMode.AUTO_FOLLOW):
             cb.addItem(ContinueMode.label(mode), mode)
-        # Stijl het editor-vlak met de cue-kleur zodat 'ie meekleurt met
-        # de regel — anders steekt-ie bleek af tegen 'n felgekleurde cue.
+        # Stijl het editor-vlak met de cue-kleur. We doen 't op DRIE
+        # manieren tegelijk omdat Qt-combobox styling notoir koppig is:
+        # 1) Hoog-specifieke ID-selector (#continueEditor) overrult de
+        #    globale stylesheet
+        # 2) palette() voor 't geval Qt's native style 'n stylesheet
+        #    negeert
+        # 3) setAutoFillBackground zodat de bg-fill wordt getekend
         tree = self.parent()
         item = tree.itemFromIndex(index) if tree is not None else None
         cue_id = (
@@ -67,23 +68,43 @@ class _ContinueDelegate(QStyledItemDelegate):
         cue = tree.workspace.find(cue_id) if cue_id and tree is not None else None
         if cue is not None and cue.color:
             base = QColor(cue.color)
-            # Donkerdere variant voor 't gesloten editor-vlak — full
-            # opacity (Qt's native combo-box negeert alpha-bg).
             bg = base.darker(160)
+            white = QColor("white")
+            # Palette — onafhankelijk van stylesheet
+            from PyQt6.QtGui import QPalette
+            pal = cb.palette()
+            for role in (
+                QPalette.ColorRole.Base,
+                QPalette.ColorRole.Button,
+                QPalette.ColorRole.Window,
+            ):
+                pal.setColor(role, bg)
+            for role in (
+                QPalette.ColorRole.Text,
+                QPalette.ColorRole.ButtonText,
+                QPalette.ColorRole.WindowText,
+            ):
+                pal.setColor(role, white)
+            cb.setPalette(pal)
+            cb.setAutoFillBackground(True)
+            # Stylesheet met ID-selector — hoogste specificity, sláát
+            # de algemene QComboBox-rule uit style.py over.
             cb.setStyleSheet(
-                f"QComboBox {{ "
+                f"QComboBox#continueEditor {{ "
                 f"  background-color: {bg.name()}; "
                 f"  color: white; "
                 f"  border: 1px solid {base.name()}; "
                 f"  padding: 1px 6px; "
-                f"  selection-background-color: {base.name()}; "
                 f"}} "
-                f"QComboBox::drop-down {{ border: none; "
-                f"  background-color: {bg.name()}; }} "
-                f"QComboBox QAbstractItemView {{ "
+                f"QComboBox#continueEditor::drop-down {{ "
+                f"  border: none; "
+                f"  background-color: {bg.name()}; "
+                f"}} "
+                f"QComboBox#continueEditor QAbstractItemView {{ "
                 f"  background-color: {bg.name()}; "
                 f"  color: white; "
                 f"  selection-background-color: {base.name()}; "
+                f"  selection-color: white; "
                 f"}}"
             )
         return cb
