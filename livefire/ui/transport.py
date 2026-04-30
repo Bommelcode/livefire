@@ -25,6 +25,7 @@ _ICON_LOCK_CLOSED = _ICONS_DIR / "lock-closed.png"
 
 
 CountdownSource = Callable[[], "tuple[str, float, bool] | None"]
+ElapsedSource = Callable[[], "float | None"]
 
 
 def _fmt_time(seconds: float) -> str:
@@ -46,7 +47,12 @@ class TransportWidget(QWidget):
     # MainWindow connect 'm aan een slot dat self.inspector.setVisible() doet.
     inspector_toggled = pyqtSignal(bool)
 
-    def __init__(self, parent=None, countdown_source: CountdownSource | None = None):
+    def __init__(
+        self,
+        parent=None,
+        countdown_source: CountdownSource | None = None,
+        elapsed_source: ElapsedSource | None = None,
+    ):
         super().__init__(parent)
         # Buitenste VBox met twee secties:
         #   Row 1 (HBox): GO/Stop (dubbel hoog) + Showtime + Inspector-
@@ -168,36 +174,49 @@ class TransportWidget(QWidget):
         self.set_playhead(0, 0, "")
         self.set_active_count(0)
 
-        self.lbl_countdown = QLabel("—:—")
-        self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cd_font = QFont()
-        cd_font.setPointSize(56)
-        cd_font.setBold(True)
-        cd_font.setFamily("Consolas, Courier New, monospace")
-        self.lbl_countdown.setFont(cd_font)
-        self.lbl_countdown.setStyleSheet(f"color: {ACCENT};")
-        self.lbl_countdown.setToolTip(
-            "Remaining time of the longest-running audio cue. With infinite "
-            "loop it counts up (prefix +)."
-        )
-        # Geen vaste min-width — laat 'm krimpen wanneer 't venster smal is.
-        # Boven 't auto-shrink-pad past 'ie wel de 56 pt-font zelf aan.
-        self.lbl_countdown.setSizePolicy(
-            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
-        )
-        row1.addWidget(self.lbl_countdown, 2)  # stretch=2 → claimt 't centrum
-
+        # NOW PLAYING tile — naam van de spelende cue (zelfde stijl als
+        # NEXT/ACTIVE). Stretcht naar links.
         self.lbl_countdown_name = QLabel()
         self.lbl_countdown_name.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
         self.lbl_countdown_name.setFont(info_font)
         self.lbl_countdown_name.setTextFormat(Qt.TextFormat.RichText)
-        # Laat 'm krimpen i.p.v. 'n vaste min-width af te dwingen.
         self.lbl_countdown_name.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
         row1.addWidget(self.lbl_countdown_name, 1)
+
+        # Twee grote timers achter de naam — ELAPSED + REMAIN, beide in
+        # monospace zodat de digits niet schokken bij elke tick.
+        timer_font = QFont("Consolas")
+        timer_font.setPointSize(36)
+        timer_font.setBold(True)
+
+        self.lbl_elapsed = QLabel("—:—")
+        self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_elapsed.setFont(timer_font)
+        self.lbl_elapsed.setStyleSheet(f"color: {OK};")
+        self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
+        self.lbl_elapsed.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
+        )
+        row1.addWidget(self.lbl_elapsed)
+
+        # Backwards-compat alias zodat bestaande code (autosave etc.) die
+        # 'lbl_countdown' aanroept blijft werken — 't is nu de REMAIN-tile.
+        self.lbl_countdown = QLabel("—:—")
+        self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_countdown.setFont(timer_font)
+        self.lbl_countdown.setStyleSheet(f"color: {ACCENT};")
+        self.lbl_countdown.setToolTip(
+            "Remaining time of the longest-running audio cue. With infinite "
+            "loop it counts up (prefix +)."
+        )
+        self.lbl_countdown.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
+        )
+        row1.addWidget(self.lbl_countdown)
 
         outer.addLayout(row1)
 
@@ -217,6 +236,7 @@ class TransportWidget(QWidget):
 
         # ---- Refresh-timer voor countdown ----------------------------------
         self._countdown_source = countdown_source
+        self._elapsed_source = elapsed_source
         self._cd_timer = QTimer(self)
         self._cd_timer.setInterval(100)  # 10 Hz is ruim genoeg
         self._cd_timer.timeout.connect(self._refresh_countdown)
@@ -313,8 +333,10 @@ class TransportWidget(QWidget):
 
     def _refresh_countdown(self) -> None:
         info = self._countdown_source() if self._countdown_source else None
+        elapsed = self._elapsed_source() if self._elapsed_source else None
         if info is None:
             self.lbl_countdown.setText("—:—")
+            self.lbl_elapsed.setText("—:—")
             self.lbl_countdown_name.setText(
                 f'<span style="color:{TEXT_DIM};font-size:8pt;'
                 f'letter-spacing:1px;">NOW PLAYING</span><br>'
@@ -324,6 +346,9 @@ class TransportWidget(QWidget):
         name, seconds, is_countdown = info
         prefix = "" if is_countdown else "+"
         self.lbl_countdown.setText(f"{prefix}{_fmt_time(seconds)}")
+        self.lbl_elapsed.setText(
+            _fmt_time(elapsed) if elapsed is not None else "—:—"
+        )
         self.lbl_countdown_name.setText(
             f'<span style="color:{ACCENT};font-size:8pt;'
             f'letter-spacing:1px;">NOW PLAYING</span><br>'

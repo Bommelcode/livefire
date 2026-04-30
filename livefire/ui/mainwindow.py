@@ -229,7 +229,8 @@ class MainWindow(QMainWindow):
         vroot.setSpacing(0)
 
         self.transport = TransportWidget(
-            countdown_source=self.controller.primary_countdown
+            countdown_source=self.controller.primary_countdown,
+            elapsed_source=self.controller.primary_elapsed,
         )
         self.transport.go_clicked.connect(self.action_go)
         self.transport.stop_all_clicked.connect(self.action_stop_all)

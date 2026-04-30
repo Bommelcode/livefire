@@ -175,6 +175,15 @@ QPushButton#stopButton {{
 }}
 QPushButton#stopButton:hover {{ background: #c04a46; }}
 
+/* Showtime: in locked state krijg je 'n rode bg zodat 't onmiskenbaar
+   is dat er een lock op de UI ligt. flash_blocked() override't deze
+   tijdelijk met 'n bordered variant — die set is in transport.py. */
+QPushButton#showtimeButton:checked {{
+    background: {ERR};
+    color: white;
+}}
+QPushButton#showtimeButton:checked:hover {{ background: #c04a46; }}
+
 QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit {{
     background: {BG_MID};
     border: 1px solid {BORDER};
