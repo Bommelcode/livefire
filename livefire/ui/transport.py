@@ -161,12 +161,9 @@ class TransportWidget(QWidget):
         self._info_font.setPointSize(self._info_font_pt)
 
         # ---- LINKER kolom: NEXT (boven) + NOW PLAYING (onder) ---------
-        # Verticaal gecentered via addStretch boven+onder zodat 't pakket
-        # netjes in 't midden van de row staat i.p.v. top-aligned.
         names_col = QVBoxLayout()
         names_col.setContentsMargins(0, 0, 0, 0)
         names_col.setSpacing(2)
-        names_col.addStretch(1)
 
         self.lbl_playhead = QLabel()
         self.lbl_playhead.setFont(self._info_font)
@@ -193,10 +190,7 @@ class TransportWidget(QWidget):
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
         names_col.addWidget(self.lbl_countdown_name)
-        names_col.addStretch(1)
-        # Stretch=0 → claim alleen de natuurlijke breedte. De timer-kolom
-        # erna pakt dan alle resterende ruimte voor 't dominant-centrum.
-        row1.addLayout(names_col, 0)
+        row1.addLayout(names_col, 3)
 
         sep_next_now = QFrame()
         sep_next_now.setFrameShape(QFrame.Shape.VLine)
@@ -220,8 +214,6 @@ class TransportWidget(QWidget):
         center_col = QVBoxLayout()
         center_col.setContentsMargins(0, 0, 0, 0)
         center_col.setSpacing(0)
-        # Verticaal centreren — dezelfde truc als bij names_col.
-        center_col.addStretch(1)
 
         # Big REMAIN — was lbl_countdown; alias blijft voor bestaande code.
         self.lbl_countdown = QLabel("—:—")
@@ -232,9 +224,7 @@ class TransportWidget(QWidget):
             "Remaining time of the longest-running audio cue. With infinite "
             "loop it counts up (prefix +)."
         )
-        # Forse min-width zodat de countdown ook bij smal venster nog
-        # leesbaar is. 280 px past comfortabel "00:00" op 56 pt.
-        self.lbl_countdown.setMinimumWidth(280)
+        self.lbl_countdown.setMinimumWidth(160)
         center_col.addWidget(self.lbl_countdown)
 
         # Tiny ELAPSED-label, dimkleur — onder de countdown.
@@ -244,12 +234,8 @@ class TransportWidget(QWidget):
         self.lbl_elapsed.setStyleSheet(f"color: {TEXT_DIM};")
         self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
         center_col.addWidget(self.lbl_elapsed)
-        center_col.addStretch(1)
 
-        # Stretch=1 zodat de timer-kolom alle resterende horizontale
-        # ruimte claimt — de QLabel zelf is center-aligned, dus de
-        # countdown-text staat in 't midden van die brede strook.
-        row1.addLayout(center_col, 1)
+        row1.addLayout(center_col, 2)
 
         outer.addWidget(row1_widget)
 
