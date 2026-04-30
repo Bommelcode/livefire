@@ -60,7 +60,7 @@ class _CueRowDelegate(QStyledItemDelegate):
             super().paint(painter, option, index)
 
 
-class _ContinueDelegate(QStyledItemDelegate):
+class _ContinueDelegate(_CueRowDelegate):
     """Inline-editor voor de Continue-kolom: opent een QComboBox met de
     drie ContinueMode-keuzes ipv het standaard tekstveld. Schrijft direct
     terug naar het Cue-object via de parent-CueListWidget en triggert
