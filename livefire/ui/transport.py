@@ -279,22 +279,31 @@ class TransportWidget(QWidget):
 
     def _adjust_responsive_fonts(self) -> None:
         """Pas de font-sizes van de header-tiles aan op de huidige
-        widget-hoogte. Zo blijven NEXT/NOW PLAYING en de twee timers
-        groot wanneer er ruimte is, en krimpen ze gracieus mee in een
-        smal venster of tweede monitor met lagere DPI."""
-        # Row 1 hoogte = transport hoogte minus de cue-toolbar-rij eronder.
-        # We schatten rij 1 op ~70 % van de totale hoogte; de exacte split
-        # is niet kritisch — relatief schalen is wat telt.
-        h = max(60, self.height())
-        # Timer-font: lineair tussen 24 en 60 pt op hoogte 70..160 px.
-        timer_pt = max(24, min(60, int(round(h * 0.55))))
+        widget-BREEDTE. Brede vensters krijgen grote display-fonts;
+        smalle vensters laten alles gracieus krimpen tot 't nog net
+        leesbaar blijft.
+
+        Schaal-bereiken (lineair in venster-breedte):
+        - 800 px breed → timers 24 pt, info 11 pt
+        - 1800 px breed → timers 64 pt, info 22 pt
+        Tussenwaarden interpoleren.
+        """
+        w = max(400, self.width())
+        # Lineaire interpolatie tussen (800, 24) en (1800, 64) voor timers
+        # en (800, 11) en (1800, 22) voor info-labels.
+        def _scale(value_min: int, value_max: int,
+                   width_min: int = 800, width_max: int = 1800) -> int:
+            t = (w - width_min) / max(1, width_max - width_min)
+            t = max(0.0, min(1.0, t))
+            return int(round(value_min + t * (value_max - value_min)))
+
+        timer_pt = _scale(24, 64)
         if timer_pt != self._timer_font_pt:
             self._timer_font_pt = timer_pt
             self._timer_font.setPointSize(timer_pt)
             self.lbl_elapsed.setFont(self._timer_font)
             self.lbl_countdown.setFont(self._timer_font)
-        # Info-font (NEXT / NOW PLAYING values): 12..22 pt
-        info_pt = max(11, min(22, int(round(h * 0.20))))
+        info_pt = _scale(11, 22)
         if info_pt != self._info_font_pt:
             self._info_font_pt = info_pt
             self._info_font.setPointSize(info_pt)
