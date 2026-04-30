@@ -56,6 +56,14 @@ class TransportWidget(QWidget):
         self.btn_showtime = QPushButton("🔓 Showtime")
         self.btn_showtime.setObjectName("showtimeButton")
         self.btn_showtime.setCheckable(True)
+        # Flink uitvergroot — moet ongeveer net zo prominent zijn als GO
+        # zodat de operator op één blik ziet of de lock aan staat. Ook
+        # wat extra padding via minimum-size zodat 't 🔒-emoji ademt.
+        self.btn_showtime.setMinimumSize(150, 44)
+        showtime_font = QFont()
+        showtime_font.setPointSize(11)
+        showtime_font.setBold(True)
+        self.btn_showtime.setFont(showtime_font)
         self.btn_showtime.setToolTip(
             "Showtime lock: blocks destructive edits (Delete, drag, "
             "inspector changes) so an accidental click can't break a "
@@ -148,6 +156,24 @@ class TransportWidget(QWidget):
         # zodat de operator zonder twijfel ziet of de lock actief is.
         self.btn_showtime.setText("🔒 Showtime" if on else "🔓 Showtime")
         self.showtime_toggled.emit(on)
+
+    def flash_blocked(self, duration_ms: int = 1500) -> None:
+        """Korte rode flash op de showtime-knop wanneer een edit geblockd
+        is. Override de globale stylesheet voor `duration_ms`, dan clear
+        de override en is de knop weer normaal. Idempotent — een tweede
+        call binnen het flash-window restart de timer netjes."""
+        self.btn_showtime.setStyleSheet(
+            "QPushButton#showtimeButton {"
+            "  background: #c0392b;"
+            "  color: white;"
+            "  border: 2px solid #ff6b5b;"
+            "  border-radius: 6px;"
+            "}"
+        )
+        QTimer.singleShot(
+            int(max(200, duration_ms)),
+            lambda: self.btn_showtime.setStyleSheet(""),
+        )
 
     # ---- countdown ---------------------------------------------------------
 
