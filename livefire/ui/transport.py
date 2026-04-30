@@ -56,12 +56,11 @@ class TransportWidget(QWidget):
         self.btn_showtime = QPushButton("🔓 Showtime")
         self.btn_showtime.setObjectName("showtimeButton")
         self.btn_showtime.setCheckable(True)
-        # Flink uitvergroot — moet ongeveer net zo prominent zijn als GO
-        # zodat de operator op één blik ziet of de lock aan staat. Ook
-        # wat extra padding via minimum-size zodat 't 🔒-emoji ademt.
-        self.btn_showtime.setMinimumSize(150, 44)
+        # Match GO/Stop All — 90x32 min-size + 10pt bold, niet groter zodat
+        # GO de visuele "primaire actie" blijft.
+        self.btn_showtime.setMinimumSize(90, 32)
         showtime_font = QFont()
-        showtime_font.setPointSize(11)
+        showtime_font.setPointSize(10)
         showtime_font.setBold(True)
         self.btn_showtime.setFont(showtime_font)
         self.btn_showtime.setToolTip(
