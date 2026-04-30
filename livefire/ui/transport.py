@@ -42,55 +42,55 @@ class TransportWidget(QWidget):
     stop_all_clicked = pyqtSignal()
     # True = lock aan (UI bevroren tegen destructieve acties), False = uit.
     showtime_toggled = pyqtSignal(bool)
+    # Operator wisselt de inspector-zichtbaarheid via de transport-knop.
+    # MainWindow connect 'm aan een slot dat self.inspector.setVisible() doet.
+    inspector_toggled = pyqtSignal(bool)
 
     def __init__(self, parent=None, countdown_source: CountdownSource | None = None):
         super().__init__(parent)
-        # 2-rij layout: GO/Stop links over beide rijen, Showtime + de
-        # rest van de transport-info in row 0, cue-toolbar in row 1
-        # over de volle breedte rechts van GO/Stop.
-        self.setMinimumHeight(96)
-        lay = QGridLayout(self)
-        lay.setContentsMargins(6, 6, 6, 6)
-        lay.setHorizontalSpacing(8)
-        lay.setVerticalSpacing(2)
-        # Beide rijen krijgen evenveel verticale ruimte; row-stretch=1 dwingt
-        # 'm om de extra hoogte gelijk te verdelen i.p.v. row 0 alles te geven.
-        lay.setRowStretch(0, 1)
-        lay.setRowStretch(1, 1)
-        # Plus expliciete minimums zodat zelfs bij een te-strakke parent
-        # GO/Stop (rowSpan=2) op ~80 px uitkomen.
-        lay.setRowMinimumHeight(0, 40)
-        lay.setRowMinimumHeight(1, 40)
+        # Buitenste VBox met twee secties:
+        #   Row 1 (HBox): GO/Stop (dubbel hoog) + Showtime + Inspector-
+        #                 toggle + sep + labels + countdown + name
+        #   Row 2 (HBox): cue-toolbar over de volle breedte
+        # Deze structuur laat de transport groeien zodra de toolbar
+        # wrapt — geen Grid-row-height-magie nodig.
+        self.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum,
+        )
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(6, 6, 6, 6)
+        outer.setSpacing(4)
 
-        # ---- LINKS — GO + Stop All (dubbel hoog: rowSpan=2) -------------
+        # ---- ROW 1 — transport-balk (alle controls + countdown) --------
+        row1 = QHBoxLayout()
+        row1.setSpacing(8)
+
         # Beide knoppen identieke fixed-width zodat ze visueel gelijk zijn.
-        # 120 px is ruim voor "Stop All" zonder dat 't te breed wordt.
         BTN_W = 120
         self.btn_go = QPushButton("GO")
         self.btn_go.setObjectName("goButton")
         self.btn_go.setToolTip("Start the cue at the playhead (Space)")
-        self.btn_go.setMinimumSize(BTN_W, 80)
-        self.btn_go.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding,
-        )
+        self.btn_go.setFixedSize(BTN_W, 80)
         self.btn_go.clicked.connect(self.go_clicked.emit)
-        lay.addWidget(self.btn_go, 0, 0, 2, 1)
+        row1.addWidget(self.btn_go)
 
         self.btn_stop = QPushButton("Stop All")
         self.btn_stop.setObjectName("stopButton")
         self.btn_stop.setToolTip("Stop all active cues immediately (Escape)")
-        self.btn_stop.setMinimumSize(BTN_W, 80)
-        self.btn_stop.setSizePolicy(
-            QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding,
-        )
+        self.btn_stop.setFixedSize(BTN_W, 80)
         self.btn_stop.clicked.connect(self.stop_all_clicked.emit)
-        lay.addWidget(self.btn_stop, 0, 1, 2, 1)
+        row1.addWidget(self.btn_stop)
 
-        # ---- ROW 0 — Showtime + sep + labels + countdown + name --------
+        # Showtime + Inspector-toggle in een kleine vbox naast elkaar (twee
+        # knoppen op enkele hoogte stapelen — past in de 80-px row).
+        controls_col = QVBoxLayout()
+        controls_col.setContentsMargins(0, 0, 0, 0)
+        controls_col.setSpacing(4)
+
         self.btn_showtime = QPushButton(" Showtime")
         self.btn_showtime.setObjectName("showtimeButton")
         self.btn_showtime.setCheckable(True)
-        self.btn_showtime.setMinimumSize(120, 36)
+        self.btn_showtime.setFixedSize(140, 36)
         showtime_font = QFont()
         showtime_font.setPointSize(10)
         showtime_font.setBold(True)
@@ -109,23 +109,38 @@ class TransportWidget(QWidget):
             "running show. GO and Stop All stay live."
         )
         self.btn_showtime.toggled.connect(self._on_showtime_toggled)
-        lay.addWidget(self.btn_showtime, 0, 2)
+        controls_col.addWidget(self.btn_showtime)
+
+        self.btn_inspector = QPushButton("Inspector")
+        self.btn_inspector.setCheckable(True)
+        self.btn_inspector.setChecked(True)  # default zichtbaar
+        self.btn_inspector.setFixedSize(140, 36)
+        inspector_font = QFont()
+        inspector_font.setPointSize(9)
+        self.btn_inspector.setFont(inspector_font)
+        self.btn_inspector.setToolTip(
+            "Show or hide the inspector pane on the right. Useful op kleine "
+            "schermen wanneer je de cuelist op breedte nodig hebt."
+        )
+        self.btn_inspector.toggled.connect(self.inspector_toggled.emit)
+        controls_col.addWidget(self.btn_inspector)
+
+        row1.addLayout(controls_col)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
         sep.setFrameShadow(QFrame.Shadow.Sunken)
-        lay.addWidget(sep, 0, 3)
+        row1.addWidget(sep)
 
         self.lbl_playhead = QLabel("Playhead: —")
         self.lbl_playhead.setToolTip("The cue that will fire on the next GO")
-        lay.addWidget(self.lbl_playhead, 0, 4)
+        row1.addWidget(self.lbl_playhead)
 
         self.lbl_active = QLabel("Active: 0")
         self.lbl_active.setToolTip("Number of cues currently playing")
-        lay.addWidget(self.lbl_active, 0, 5)
+        row1.addWidget(self.lbl_active)
 
-        # Stretch in col 6 zodat countdown naar 't midden gedrukt wordt.
-        lay.setColumnStretch(6, 1)
+        row1.addStretch(1)
 
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -140,9 +155,9 @@ class TransportWidget(QWidget):
             "loop it counts up (prefix +)."
         )
         self.lbl_countdown.setMinimumWidth(280)
-        lay.addWidget(self.lbl_countdown, 0, 7)
+        row1.addWidget(self.lbl_countdown)
 
-        lay.setColumnStretch(8, 1)
+        row1.addStretch(1)
 
         self.lbl_countdown_name = QLabel("")
         self.lbl_countdown_name.setAlignment(
@@ -153,18 +168,23 @@ class TransportWidget(QWidget):
         self.lbl_countdown_name.setFont(name_font)
         self.lbl_countdown_name.setStyleSheet(f"color: {TEXT_DIM};")
         self.lbl_countdown_name.setMinimumWidth(180)
-        lay.addWidget(self.lbl_countdown_name, 0, 9)
+        row1.addWidget(self.lbl_countdown_name)
 
-        # ---- ROW 1 — cue-toolbar over volle breedte rechts van GO/Stop -
-        # Spans cols 2..9 (alle resterende kolommen). MainWindow injecteert
-        # de eigenlijke widget via set_cue_toolbar().
+        outer.addLayout(row1)
+
+        # ---- ROW 2 — cue-toolbar over volle breedte --------------------
+        # MainWindow injecteert de eigenlijke widget via set_cue_toolbar();
+        # de FlowLayout binnenin wrapt naar 'n volgende regel als 't te
+        # smal wordt. De holder zelf heeft sizePolicy MinimumExpanding op
+        # vertical zodat 'ie meegroei't met die wrap.
         self._cue_toolbar_holder = QWidget()
+        self._cue_toolbar_holder.setSizePolicy(
+            QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum,
+        )
         self._cue_toolbar_lay = QHBoxLayout(self._cue_toolbar_holder)
         self._cue_toolbar_lay.setContentsMargins(0, 0, 0, 0)
         self._cue_toolbar_lay.setSpacing(2)
-        # rowSpan=1, colSpan=8 (cols 2..9) zodat 'ie de hele breedte naast
-        # GO/Stop pakt — niet alleen de Showtime-kolom.
-        lay.addWidget(self._cue_toolbar_holder, 1, 2, 1, 8)
+        outer.addWidget(self._cue_toolbar_holder)
 
         # ---- Refresh-timer voor countdown ----------------------------------
         self._countdown_source = countdown_source

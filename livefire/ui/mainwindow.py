@@ -234,6 +234,12 @@ class MainWindow(QMainWindow):
         self.transport.go_clicked.connect(self.action_go)
         self.transport.stop_all_clicked.connect(self.action_stop_all)
         self.transport.showtime_toggled.connect(self._on_showtime_toggled)
+        # Inspector show/hide via transport-knop. self.inspector bestaat
+        # nog niet op dit moment — connect via een lambda zodat we 'm
+        # later opzoeken.
+        self.transport.inspector_toggled.connect(
+            lambda visible: self.inspector.setVisible(visible)
+        )
         vroot.addWidget(self.transport)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
