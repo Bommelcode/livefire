@@ -408,6 +408,9 @@ class MainWindow(QMainWindow):
         self._sync_title()
         if hasattr(self, "autosave"):
             self.autosave.attach_workspace(self.ws)
+        # Lege snapshot pushen zodat Companion's fire-button-labels leeg
+        # gaan i.p.v. te blijven hangen op de cues van de vorige workspace.
+        self._broadcast_cuelist_snapshot()
 
     def action_open(self) -> None:
         if not self._confirm_discard():
@@ -455,6 +458,9 @@ class MainWindow(QMainWindow):
         self._sync_title()
         if hasattr(self, "autosave"):
             self.autosave.attach_workspace(self.ws)
+        # Companion / Stream Deck moet weten dat de cuelist veranderd is —
+        # anders blijven fire-buttons leeg tot de operator een cue edit.
+        self._broadcast_cuelist_snapshot()
 
     def action_save(self) -> None:
         if self.ws.path is None:
