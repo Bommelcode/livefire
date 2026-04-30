@@ -52,6 +52,22 @@ class _ContinueDelegate(QStyledItemDelegate):
                      ContinueMode.AUTO_CONTINUE,
                      ContinueMode.AUTO_FOLLOW):
             cb.addItem(ContinueMode.label(mode), mode)
+        # Stijl het editor-vlak met de cue-kleur zodat 'ie meekleurt met
+        # de regel — anders steekt-ie bleek af tegen 'n felgekleurde cue.
+        tree = self.parent()
+        item = tree.itemFromIndex(index) if tree is not None else None
+        cue_id = (
+            item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+        )
+        cue = tree.workspace.find(cue_id) if cue_id and tree is not None else None
+        if cue is not None and cue.color:
+            tint = tint_for_row(cue.color)
+            cb.setStyleSheet(
+                f"QComboBox {{ background: {tint.name()}; color: white; "
+                f"border: 1px solid {QColor(cue.color).name()}; }}"
+                f"QComboBox QAbstractItemView {{ background: #2a2a2a; "
+                f"selection-background-color: {QColor(cue.color).name()}; }}"
+            )
         return cb
 
     def setEditorData(self, editor: QComboBox, index) -> None:
@@ -330,6 +346,9 @@ class CueListWidget(QTreeWidget):
             empty = QBrush()
             for col in range(len(COLUMNS)):
                 item.setBackground(col, empty)
+        # Playhead-stijl re-applyen zodat de ▶-marker + bg-wash overleven
+        # na 'n veld-update (anders raakt 'ie weg bij elke nummer-edit).
+        self._apply_playhead_style()
 
     # ---- selectie & playhead ----------------------------------------------
 
@@ -368,27 +387,21 @@ class CueListWidget(QTreeWidget):
         self.playhead_changed.emit(self._playhead_index)
 
     def _apply_playhead_style(self) -> None:
-        """Markeer de cue waar de playhead op staat met oranje achtergrond
-        + witte vette tekst, à la QLab. Op een donker thema valt 't bold-
-        only-pad eerder weg dan dat 't opvalt; deze stijl is aan twee
-        meter afstand nog leesbaar.
+        """Markeer de cue waar de playhead op staat. Tweelagige aanpak:
 
-        Werkt voor zowel top-level als nested children via _id_to_item.
-        Bij not-playhead reset 'ie de cell-kleuren naar de cue-color-bar
-        (zelfde regels als _make_item / update_cue_display)."""
+        1) ▶-marker in de nummer-cel (wit, dik) — werkt zelfs op een
+           cue met dezelfde kleur als de oude oranje accent-bar (klassieke
+           verwarring: oranje-cue + oranje-bar = onzichtbaar)
+        2) Witte 1px-rand om de hele rij + iets oplichtende bg — tint
+           houden we klein zodat de cue-color-tag nog door de regel loopt
+        """
         dim = QBrush(QColor(TEXT_DIM))
         text = QBrush(QColor("#ffffff"))
-        # ACCENT_ALT met alpha — semi-transparant zodat alternating-rows
-        # nog subtiel doorschijnen en de cue-color-tag aan de linker-cel
-        # niet volledig wordt overschreven.
-        ph_bg_color = QColor(ACCENT_ALT)
-        ph_bg_color.setAlpha(140)
+        # Subtiele lichte overlay, géén volledig oranje meer — anders
+        # botst 't met oranje-cues. We zetten 'm op alle kolommen zodat
+        # de regel "oplicht" maar de cue-color nog leesbaar blijft.
+        ph_bg_color = QColor(255, 255, 255, 60)  # 23% witte wash
         ph_bg = QBrush(ph_bg_color)
-        # Accent-balk in de eerste kolom (volle dekking) over de cue-
-        # color-tag heen wanneer dit de playhead is — geeft een
-        # duidelijke verticale streep aan de linkerkant.
-        ph_bar_color = QColor(ACCENT_ALT)
-        ph_bar = QBrush(ph_bar_color)
 
         playhead_id: str | None = None
         if 0 <= self._playhead_index < len(self.workspace.cues):
@@ -403,13 +416,31 @@ class CueListWidget(QTreeWidget):
             for col in range(self.columnCount()):
                 item.setFont(col, f)
 
+            # Eerst de nummer-tekst normaliseren; in het ph-pad voegen we
+            # daarna de ▶-marker toe. Anders blijft 'ie hangen op een
+            # rij die vroeger ph was.
+            if cue is not None:
+                bare_num = cue.cue_number or str(
+                    self.workspace.index_of(cue_id) + 1
+                )
+                item.setText(0, f"▶ {bare_num}" if is_ph else bare_num)
+
             if is_ph:
-                # Volle oranje balk op de nummer-kolom + getinte rest
-                item.setBackground(0, ph_bar)
-                for col in range(1, self.columnCount()):
-                    item.setBackground(col, ph_bg)
-                # Witte tekst zodat 't contrast met oranje sterk blijft;
-                # behalve de status-cel die z'n eigen state-color toont.
+                # Lichte witte wash over de cue-color-tint heen — werkt op
+                # zowel donkere als oranje rijen omdat 't compositioneel
+                # mengt i.p.v. te overschrijven.
+                if cue is not None and cue.color:
+                    full = QBrush(QColor(cue.color))
+                    item.setBackground(0, full)
+                    for col in range(1, self.columnCount()):
+                        # Mix tint met de witte wash voor 't playhead-effect.
+                        tint = QColor(tint_for_row(cue.color))
+                        tint.setAlpha(220)
+                        item.setBackground(col, QBrush(tint))
+                else:
+                    for col in range(self.columnCount()):
+                        item.setBackground(col, ph_bg)
+                # Witte vette tekst voor maximaal contrast.
                 for col in range(self.columnCount()):
                     item.setForeground(col, text)
                 state_color = STATE_COLORS.get(

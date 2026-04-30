@@ -23,6 +23,7 @@ _ICONS_DIR = Path(__file__).resolve().parent.parent / "resources" / "icons"
 _ICON_LOCK_OPEN = _ICONS_DIR / "lock-open.png"
 _ICON_LOCK_CLOSED = _ICONS_DIR / "lock-closed.png"
 _ICON_LOCK_CLOSED_RED = _ICONS_DIR / "lock-closed-red.png"
+_ICON_LOCK_CLOSED_GREEN = _ICONS_DIR / "lock-closed-green.png"
 
 
 CountdownSource = Callable[[], "tuple[str, float, bool] | None"]
@@ -105,11 +106,11 @@ class TransportWidget(QWidget):
         self._icon_lock_open = (
             QIcon(str(_ICON_LOCK_OPEN)) if _ICON_LOCK_OPEN.is_file() else QIcon()
         )
-        # Locked-state pakt de RODE variant zodat alleen de glyph rood kleurt
+        # Locked-state pakt de GROENE variant zodat alleen de glyph kleurt
         # i.p.v. de hele knop-achtergrond. Bg blijft default (donker).
         self._icon_lock_closed = (
-            QIcon(str(_ICON_LOCK_CLOSED_RED))
-            if _ICON_LOCK_CLOSED_RED.is_file()
+            QIcon(str(_ICON_LOCK_CLOSED_GREEN))
+            if _ICON_LOCK_CLOSED_GREEN.is_file()
             else QIcon(str(_ICON_LOCK_CLOSED))
             if _ICON_LOCK_CLOSED.is_file()
             else QIcon()

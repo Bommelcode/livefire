@@ -14,6 +14,7 @@ from PIL import Image, ImageDraw, ImageFilter
 SIZE = 144
 WHITE = (255, 255, 255, 255)
 RED = (217, 83, 79, 255)  # match style.ERR
+GREEN = (92, 184, 92, 255)  # match style.OK
 W = SIZE
 # Wordt door _lock_body gebruikt; default = WHITE, rode variant override't.
 _LOCK_FILL = WHITE
@@ -346,6 +347,17 @@ def lock_closed_red(d: ImageDraw.ImageDraw) -> None:
         _LOCK_FILL = prev
 
 
+def lock_closed_green(d: ImageDraw.ImageDraw) -> None:
+    """Groene variant — current keuze voor de locked-state showtime-knop."""
+    global _LOCK_FILL
+    prev = _LOCK_FILL
+    _LOCK_FILL = GREEN
+    try:
+        _lock_body(d, closed=True)
+    finally:
+        _LOCK_FILL = prev
+
+
 def cart_wall(d: ImageDraw.ImageDraw) -> None:
     # Cart wall: 4x4 grid van afgeronde knoppen, klassieke radio-sting-look.
     # Eén knopje "ingedrukt" (gevuld vs. outline) zodat 't karakter heeft
@@ -429,6 +441,7 @@ GLYPHS = [
     ("cart_wall", cart_wall),
     ("lock_closed", lock_closed),
     ("lock_closed_red", lock_closed_red),
+    ("lock_closed_green", lock_closed_green),
     ("lock_open", lock_open),
 ]
 
