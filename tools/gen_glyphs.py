@@ -242,6 +242,99 @@ def clock(d: ImageDraw.ImageDraw) -> None:
     d.line([cx, cy, cx + 36, cy], fill=WHITE, width=6)
 
 
+def _lock_body(d: ImageDraw.ImageDraw, *, closed: bool) -> None:
+    """Hangslot — body onderaan, beugel bovenop. closed=True is een dicht
+    slot, closed=False een open slot (rechter-poot van de beugel zit
+    omhoog/los). Beide vullen 't W×W canvas evenredig zodat ze visueel
+    uitwisselbaar zijn op dezelfde knop."""
+    cx = W // 2
+    body_top = 70
+    body_bottom = W - 24
+    body_left = cx - 40
+    body_right = cx + 40
+    # Body — afgeronde rechthoek
+    d.rounded_rectangle(
+        [body_left, body_top, body_right, body_bottom],
+        radius=10, fill=WHITE,
+    )
+    # Sleutelgat — kleine cirkel + verticale streep — uitgespaard zodat
+    # 't gaatje contrasteert tegen de witte body.
+    cy_keyhole = body_top + (body_bottom - body_top) // 2 - 4
+    d.ellipse(
+        [cx - 7, cy_keyhole - 7, cx + 7, cy_keyhole + 7],
+        fill=(0, 0, 0, 0),
+    )
+    d.rectangle(
+        [cx - 3, cy_keyhole, cx + 3, cy_keyhole + 18],
+        fill=(0, 0, 0, 0),
+    )
+    # Beugel — gebogen "U" bovenop het body. closed = beide poten op de
+    # body. open = rechter-poot omhoog (slot is uit).
+    bracket_top = 24
+    bracket_radius = 26
+    bracket_inner_r = 16
+    bracket_cx = cx
+    bracket_cy = body_top + 2
+    # Outer arc
+    d.arc(
+        [bracket_cx - bracket_radius, bracket_top,
+         bracket_cx + bracket_radius, bracket_top + 2 * bracket_radius],
+        start=180, end=360, fill=WHITE, width=10,
+    )
+    # Linker poot — altijd recht omlaag tot de body
+    d.line(
+        [bracket_cx - bracket_radius, bracket_top + bracket_radius,
+         bracket_cx - bracket_radius, body_top + 4],
+        fill=WHITE, width=10,
+    )
+    if closed:
+        # Rechter poot — recht omlaag, sluit aan op body
+        d.line(
+            [bracket_cx + bracket_radius, bracket_top + bracket_radius,
+             bracket_cx + bracket_radius, body_top + 4],
+            fill=WHITE, width=10,
+        )
+    else:
+        # Rechter poot — kort, los van het body (slot is open)
+        d.line(
+            [bracket_cx + bracket_radius, bracket_top + bracket_radius,
+             bracket_cx + bracket_radius, bracket_top + bracket_radius + 16],
+            fill=WHITE, width=10,
+        )
+
+
+def lock_closed(d: ImageDraw.ImageDraw) -> None:
+    _lock_body(d, closed=True)
+
+
+def lock_open(d: ImageDraw.ImageDraw) -> None:
+    _lock_body(d, closed=False)
+
+
+def cart_wall(d: ImageDraw.ImageDraw) -> None:
+    # Cart wall: 4x4 grid van afgeronde knoppen, klassieke radio-sting-look.
+    # Eén knopje "ingedrukt" (gevuld vs. outline) zodat 't karakter heeft
+    # i.p.v. een schaakbord.
+    pad = 18
+    gap = 6
+    grid = 4
+    cell = (W - 2 * pad - (grid - 1) * gap) // grid
+    radius = 4
+    pressed_x, pressed_y = 1, 2  # cellen-coordinaten van 't 'aan'-knopje
+    for gy in range(grid):
+        for gx in range(grid):
+            x0 = pad + gx * (cell + gap)
+            y0 = pad + gy * (cell + gap)
+            x1 = x0 + cell
+            y1 = y0 + cell
+            if gx == pressed_x and gy == pressed_y:
+                d.rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=WHITE)
+            else:
+                d.rounded_rectangle(
+                    [x0, y0, x1, y1], radius=radius, outline=WHITE, width=4,
+                )
+
+
 def house(d: ImageDraw.ImageDraw) -> None:
     # Home-glyph: dak (driehoek) + body (rechthoek) + deur (rechthoek-cutout
     # die we als zwart-transparant tekenen). Klassieke home-icon-look.
@@ -298,6 +391,9 @@ GLYPHS = [
     ("standby", standby_circle),
     ("wait", clock),
     ("home", house),
+    ("cart_wall", cart_wall),
+    ("lock_closed", lock_closed),
+    ("lock_open", lock_open),
 ]
 
 
