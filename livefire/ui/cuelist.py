@@ -48,6 +48,11 @@ class _ContinueDelegate(QStyledItemDelegate):
 
     def createEditor(self, parent, option, index):
         cb = QComboBox(parent)
+        # Forceer Fusion-style op de combo box zodat Qt-stylesheets ECHT
+        # de bg-kleur tekenen (Windows-native style negeert anders een
+        # widget-stylesheet van een combo box).
+        from PyQt6.QtWidgets import QStyleFactory
+        cb.setStyle(QStyleFactory.create("Fusion"))
         for mode in (ContinueMode.DO_NOT_CONTINUE,
                      ContinueMode.AUTO_CONTINUE,
                      ContinueMode.AUTO_FOLLOW):
@@ -61,12 +66,25 @@ class _ContinueDelegate(QStyledItemDelegate):
         )
         cue = tree.workspace.find(cue_id) if cue_id and tree is not None else None
         if cue is not None and cue.color:
-            tint = tint_for_row(cue.color)
+            base = QColor(cue.color)
+            # Donkerdere variant voor 't gesloten editor-vlak — full
+            # opacity (Qt's native combo-box negeert alpha-bg).
+            bg = base.darker(160)
             cb.setStyleSheet(
-                f"QComboBox {{ background: {tint.name()}; color: white; "
-                f"border: 1px solid {QColor(cue.color).name()}; }}"
-                f"QComboBox QAbstractItemView {{ background: #2a2a2a; "
-                f"selection-background-color: {QColor(cue.color).name()}; }}"
+                f"QComboBox {{ "
+                f"  background-color: {bg.name()}; "
+                f"  color: white; "
+                f"  border: 1px solid {base.name()}; "
+                f"  padding: 1px 6px; "
+                f"  selection-background-color: {base.name()}; "
+                f"}} "
+                f"QComboBox::drop-down {{ border: none; "
+                f"  background-color: {bg.name()}; }} "
+                f"QComboBox QAbstractItemView {{ "
+                f"  background-color: {bg.name()}; "
+                f"  color: white; "
+                f"  selection-background-color: {base.name()}; "
+                f"}}"
             )
         return cb
 
