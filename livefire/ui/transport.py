@@ -10,7 +10,8 @@ from pathlib import Path
 from PyQt6.QtCore import pyqtSignal, Qt, QTimer, QSize
 from PyQt6.QtGui import QFont, QIcon
 from PyQt6.QtWidgets import (
-    QWidget, QHBoxLayout, QPushButton, QLabel, QFrame, QGridLayout,
+    QWidget, QHBoxLayout, QVBoxLayout, QPushButton, QLabel, QFrame,
+    QSizePolicy,
 )
 
 from .style import ACCENT, TEXT_DIM
@@ -44,53 +45,47 @@ class TransportWidget(QWidget):
 
     def __init__(self, parent=None, countdown_source: CountdownSource | None = None):
         super().__init__(parent)
-        # GridLayout met twee rijen — GO/Stop zijn dubbele hoogte
-        # (rowSpan=2), Showtime + cue-toolbar delen de rechter-bovenkolom
-        # in twee horizontale strips. Cue-toolbar wordt door MainWindow
-        # ingevoegd via set_cue_toolbar(); deze widget reserveert alleen
-        # de ruimte ervoor.
-        lay = QGridLayout(self)
-        lay.setContentsMargins(6, 6, 6, 6)
-        lay.setHorizontalSpacing(8)
-        lay.setVerticalSpacing(4)
-        # Forceer row-hoogtes zodat GO/Stop (rowSpan=2) écht dubbele hoogte
-        # krijgen. Zonder dit zakt 't grid in tot de natuurlijke hoogte van
-        # 't kleinste row-item — dan zijn ze niet visueel hoger dan single
-        # row.
-        lay.setRowMinimumHeight(0, 38)
-        lay.setRowMinimumHeight(1, 38)
+        # Drie-kolommen layout: [GO+Stop, dubbel hoog] [Showtime + cue-
+        # toolbar in een vbox] [rest, vertical-centered]. Eenvoudiger te
+        # debuggen dan een QGridLayout met rowSpans, en geeft GO/Stop
+        # echt dubbele hoogte zonder verborgen min-height-spelletjes.
+        # Forceer 'n minimum-hoogte op de hele transport-widget zodat
+        # GO/Stop ergens naartoe kunnen groeien.
+        self.setMinimumHeight(80)
+        outer = QHBoxLayout(self)
+        outer.setContentsMargins(6, 6, 6, 6)
+        outer.setSpacing(8)
 
-        # Col 0 — GO (dubbel hoog: span 2 rijen)
+        # ---- LINKS — GO + Stop All (dubbel hoog) -----------------------
         self.btn_go = QPushButton("GO")
         self.btn_go.setObjectName("goButton")
         self.btn_go.setToolTip("Start the cue at the playhead (Space)")
         self.btn_go.setMinimumHeight(72)
+        self.btn_go.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.btn_go.clicked.connect(self.go_clicked.emit)
-        lay.addWidget(self.btn_go, 0, 0, 2, 1)
+        outer.addWidget(self.btn_go)
 
-        # Col 1 — Stop All (dubbel hoog: span 2 rijen)
         self.btn_stop = QPushButton("Stop All")
         self.btn_stop.setObjectName("stopButton")
         self.btn_stop.setToolTip("Stop all active cues immediately (Escape)")
         self.btn_stop.setMinimumHeight(72)
+        self.btn_stop.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
         self.btn_stop.clicked.connect(self.stop_all_clicked.emit)
-        lay.addWidget(self.btn_stop, 0, 1, 2, 1)
+        outer.addWidget(self.btn_stop)
 
-        # ---- Showtime-lock toggle (col 2 row 0) -------------------------
-        # Bevriest destructieve UI-acties (Delete, drag-reorder, inspector-
-        # edits) zodra het publiek binnen is. GO en Stop All blijven altijd
-        # werken — dit is geen freeze van de show, alleen van de editor.
+        # ---- MIDDEN — Showtime boven, cue-toolbar eronder ---------------
+        mid_col = QVBoxLayout()
+        mid_col.setContentsMargins(0, 0, 0, 0)
+        mid_col.setSpacing(2)
+
         self.btn_showtime = QPushButton(" Showtime")
         self.btn_showtime.setObjectName("showtimeButton")
         self.btn_showtime.setCheckable(True)
-        self.btn_showtime.setMinimumSize(90, 32)
+        self.btn_showtime.setMinimumSize(120, 32)
         showtime_font = QFont()
         showtime_font.setPointSize(10)
         showtime_font.setBold(True)
         self.btn_showtime.setFont(showtime_font)
-        # Cache de twee icon-states zodat we ze niet elke toggle opnieuw
-        # van disk hoeven te lezen. Pad valt terug op leeg-QIcon als 't
-        # bestand er niet is — dan toont Qt enkel de tekst, geen crash.
         self._icon_lock_open = (
             QIcon(str(_ICON_LOCK_OPEN)) if _ICON_LOCK_OPEN.is_file() else QIcon()
         )
@@ -105,46 +100,39 @@ class TransportWidget(QWidget):
             "running show. GO and Stop All stay live."
         )
         self.btn_showtime.toggled.connect(self._on_showtime_toggled)
-        lay.addWidget(self.btn_showtime, 0, 2)
+        mid_col.addWidget(self.btn_showtime)
 
-        # Cue-toolbar slot — row 1, vanaf col 2 doorlopend tot een eind-
-        # kolom zodat de toolbar zoveel ruimte krijgt als nodig. Default
-        # leeg; MainWindow injecteert via set_cue_toolbar().
+        # Cue-toolbar slot — MainWindow injecteert via set_cue_toolbar().
+        # Geen fixed-height; pakt de natuurlijke hoogte van de scroll-area
+        # zodat de glyph-knoppen niet geclipt worden.
         self._cue_toolbar_holder = QWidget()
         self._cue_toolbar_lay = QHBoxLayout(self._cue_toolbar_holder)
         self._cue_toolbar_lay.setContentsMargins(0, 0, 0, 0)
         self._cue_toolbar_lay.setSpacing(2)
-        # ColSpan=99 — Qt clipt 'm aan 't aantal echte kolommen, en zo
-        # hoeven we niet te tellen wat we hierna toevoegen.
-        lay.addWidget(self._cue_toolbar_holder, 1, 2, 1, 99)
+        mid_col.addWidget(self._cue_toolbar_holder)
 
-        # Col 3 row 0 — separator
+        outer.addLayout(mid_col)
+
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.VLine)
         sep.setFrameShadow(QFrame.Shadow.Sunken)
-        lay.addWidget(sep, 0, 3)
+        outer.addWidget(sep)
 
-        # Col 4 row 0 — playhead + active in een kleine VBox naast elkaar
-        labels_holder = QWidget()
-        labels_lay = QHBoxLayout(labels_holder)
-        labels_lay.setContentsMargins(0, 0, 0, 0)
-        labels_lay.setSpacing(12)
+        # ---- RECHTS — labels, countdown, naam (vertical-centered) -----
         self.lbl_playhead = QLabel("Playhead: —")
         self.lbl_playhead.setToolTip("The cue that will fire on the next GO")
-        labels_lay.addWidget(self.lbl_playhead)
+        outer.addWidget(self.lbl_playhead)
+
         self.lbl_active = QLabel("Active: 0")
         self.lbl_active.setToolTip("Number of cues currently playing")
-        labels_lay.addWidget(self.lbl_active)
-        lay.addWidget(labels_holder, 0, 4)
+        outer.addWidget(self.lbl_active)
 
-        # Col 5 — stretch
-        lay.setColumnStretch(5, 1)
+        outer.addStretch(1)
 
-        # ---- Countdown centraal (col 6 row 0) ---------------------------
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
         cd_font = QFont()
-        cd_font.setPointSize(56)  # was 88; 72 hoog totaal kan dat niet meer
+        cd_font.setPointSize(56)
         cd_font.setBold(True)
         cd_font.setFamily("Consolas, Courier New, monospace")
         self.lbl_countdown.setFont(cd_font)
@@ -154,12 +142,10 @@ class TransportWidget(QWidget):
             "loop it counts up (prefix +)."
         )
         self.lbl_countdown.setMinimumWidth(280)
-        lay.addWidget(self.lbl_countdown, 0, 6)
+        outer.addWidget(self.lbl_countdown)
 
-        # Col 7 — stretch
-        lay.setColumnStretch(7, 1)
+        outer.addStretch(1)
 
-        # ---- Naam van de spelende cue rechts (col 8 row 0) --------------
         self.lbl_countdown_name = QLabel("")
         self.lbl_countdown_name.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
@@ -169,7 +155,7 @@ class TransportWidget(QWidget):
         self.lbl_countdown_name.setFont(name_font)
         self.lbl_countdown_name.setStyleSheet(f"color: {TEXT_DIM};")
         self.lbl_countdown_name.setMinimumWidth(180)
-        lay.addWidget(self.lbl_countdown_name, 0, 8)
+        outer.addWidget(self.lbl_countdown_name)
 
         # ---- Refresh-timer voor countdown ----------------------------------
         self._countdown_source = countdown_source

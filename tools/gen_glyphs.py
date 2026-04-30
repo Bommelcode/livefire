@@ -242,11 +242,40 @@ def clock(d: ImageDraw.ImageDraw) -> None:
     d.line([cx, cy, cx + 36, cy], fill=WHITE, width=6)
 
 
+def _draw_bow_closed(d: ImageDraw.ImageDraw, body_top: int) -> None:
+    """Tekent een dichte U-bow op de gegeven draw — beide poten landen
+    op body_top, top is een halve ring."""
+    cx = W // 2
+    bracket_outer_r = 30
+    bracket_inner_r = 18
+    bracket_cy = body_top - 4  # ring-center net boven de body
+    outer_box = [
+        cx - bracket_outer_r, bracket_cy - bracket_outer_r,
+        cx + bracket_outer_r, bracket_cy + bracket_outer_r,
+    ]
+    inner_box = [
+        cx - bracket_inner_r, bracket_cy - bracket_inner_r,
+        cx + bracket_inner_r, bracket_cy + bracket_inner_r,
+    ]
+    d.pieslice(outer_box, start=180, end=360, fill=WHITE)
+    d.pieslice(inner_box, start=180, end=360, fill=(0, 0, 0, 0))
+    # Linker + rechter flank tussen ring-onderkant en body-bovenkant
+    d.rectangle(
+        [cx - bracket_outer_r, bracket_cy,
+         cx - bracket_inner_r, body_top + 2],
+        fill=WHITE,
+    )
+    d.rectangle(
+        [cx + bracket_inner_r, bracket_cy,
+         cx + bracket_outer_r, body_top + 2],
+        fill=WHITE,
+    )
+
+
 def _lock_body(d: ImageDraw.ImageDraw, *, closed: bool) -> None:
     """Hangslot — body onderaan, beugel bovenop. closed=True = dicht slot;
-    closed=False = open slot, met de rechter-poot van de beugel omhoog
-    los én duidelijk afgekapt zodat de twee staten in één oogopslag te
-    onderscheiden zijn op een knop van ~18px."""
+    closed=False = open slot waarbij de beugel naar links gedraaid is om
+    z'n linker-aanhechtpunt (typische open-slot iconografie)."""
     cx = W // 2
     body_top = 70
     body_bottom = W - 24
@@ -268,75 +297,29 @@ def _lock_body(d: ImageDraw.ImageDraw, *, closed: bool) -> None:
         [cx - 3, cy_keyhole, cx + 3, cy_keyhole + 18],
         fill=(0, 0, 0, 0),
     )
-    # Beugel — getekend met een ring (outer ellipse - inner ellipse) zodat
-    # de boog dezelfde lijndikte heeft als de poten. We tekenen 'm in
-    # twee stappen: vol-witte buiten-ellips, dan transparant binnen-ellips.
-    bracket_outer_r = 30
-    bracket_inner_r = 18
-    bracket_cy = body_top - 4  # ring-center net boven de body
-    # Boundary van de buiten-ellips
-    outer_box = [
-        cx - bracket_outer_r, bracket_cy - bracket_outer_r,
-        cx + bracket_outer_r, bracket_cy + bracket_outer_r,
-    ]
-    inner_box = [
-        cx - bracket_inner_r, bracket_cy - bracket_inner_r,
-        cx + bracket_inner_r, bracket_cy + bracket_inner_r,
-    ]
     if closed:
-        # Volle ring bovenop het body. We tekenen 'm half (boven-helft)
-        # via pieslice: 180° → 360° = top-half in PIL's CW-conventie.
-        d.pieslice(outer_box, start=180, end=360, fill=WHITE)
-        d.pieslice(inner_box, start=180, end=360, fill=(0, 0, 0, 0))
-        # De ring heeft een onderste-rand die de body ontmoet; om geen
-        # gat te tonen tussen ring en body vullen we de zijflanken.
-        d.rectangle(
-            [cx - bracket_outer_r, bracket_cy,
-             cx - bracket_inner_r, body_top + 2],
-            fill=WHITE,
-        )
-        d.rectangle(
-            [cx + bracket_inner_r, bracket_cy,
-             cx + bracket_outer_r, body_top + 2],
-            fill=WHITE,
-        )
+        # Beugel staat in dichte stand op de body.
+        _draw_bow_closed(d, body_top)
     else:
-        # Open: bow zit los van de body — duidelijk gat ertussen, en
-        # de rechter-poot is afgekapt zodat 't onmiskenbaar "open" is.
-        # We tilten de hele bow ~18 px omhoog en knippen 'm horizontaal
-        # iets korter aan de rechterkant.
-        lift = 24
-        outer_box_lift = [
-            cx - bracket_outer_r, bracket_cy - bracket_outer_r - lift,
-            cx + bracket_outer_r, bracket_cy + bracket_outer_r - lift,
-        ]
-        inner_box_lift = [
-            cx - bracket_inner_r, bracket_cy - bracket_inner_r - lift,
-            cx + bracket_inner_r, bracket_cy + bracket_inner_r - lift,
-        ]
-        # Linker-driekwart van de bow (180° → 360°-min-rechter-flank).
-        # We trekken 'm tot ~330° (= rechtsonder helemaal door) en knippen
-        # de rechter-poot weg door geen verticale-flank-rect daar te
-        # tekenen. Plus de body raakt de bow nu niet meer (lift > 0).
-        d.pieslice(outer_box_lift, start=180, end=360, fill=WHITE)
-        d.pieslice(inner_box_lift, start=180, end=360, fill=(0, 0, 0, 0))
-        # Alleen de LINKER flank tussen bow-bottom en zou-naar-body —
-        # nu een korte poot (16 px) die hangt onder de bow, niet naar
-        # de body reikt.
-        leg_top = bracket_cy - lift
-        leg_bottom = leg_top + 16
-        d.rectangle(
-            [cx - bracket_outer_r, leg_top,
-             cx - bracket_inner_r, leg_bottom],
-            fill=WHITE,
+        # Beugel naar links gedraaid om z'n linker-aanhechtpunt — typische
+        # open-slot iconografie. We tekenen de gesloten bow op een
+        # transparant sub-canvas, roteren dat met PIL.Image.rotate() rond
+        # 't aanhechtpunt, en composieten 't terug op de hoofd-image.
+        # `d._image` is de onderliggende PIL.Image van deze ImageDraw —
+        # daar pasten we de geroteerde bow op.
+        bow_canvas = Image.new("RGBA", (W, W), (0, 0, 0, 0))
+        bow_draw = ImageDraw.Draw(bow_canvas)
+        _draw_bow_closed(bow_draw, body_top)
+        # Pivot: linker-flank van de bow waar 'ie 't body raakt.
+        bracket_outer_r = 30
+        bracket_inner_r = 18
+        pivot_x = cx - (bracket_outer_r + bracket_inner_r) // 2
+        pivot_y = body_top
+        # 50° CCW = duidelijk "open" zonder dat 'ie 't canvas uitsteekt.
+        rotated = bow_canvas.rotate(
+            50, center=(pivot_x, pivot_y), resample=Image.BICUBIC,
         )
-        # Rechter flank: knippen we weg. Halverwege "ophangen" — een nóg
-        # kortere stomp van 8 px om aan te geven dat 'ie open hangt.
-        d.rectangle(
-            [cx + bracket_inner_r, leg_top,
-             cx + bracket_outer_r, leg_top + 8],
-            fill=WHITE,
-        )
+        d._image.alpha_composite(rotated)
 
 
 def lock_closed(d: ImageDraw.ImageDraw) -> None:
