@@ -53,6 +53,12 @@ class TransportWidget(QWidget):
         lay.setContentsMargins(6, 6, 6, 6)
         lay.setHorizontalSpacing(8)
         lay.setVerticalSpacing(4)
+        # Forceer row-hoogtes zodat GO/Stop (rowSpan=2) écht dubbele hoogte
+        # krijgen. Zonder dit zakt 't grid in tot de natuurlijke hoogte van
+        # 't kleinste row-item — dan zijn ze niet visueel hoger dan single
+        # row.
+        lay.setRowMinimumHeight(0, 38)
+        lay.setRowMinimumHeight(1, 38)
 
         # Col 0 — GO (dubbel hoog: span 2 rijen)
         self.btn_go = QPushButton("GO")
@@ -92,7 +98,7 @@ class TransportWidget(QWidget):
             QIcon(str(_ICON_LOCK_CLOSED)) if _ICON_LOCK_CLOSED.is_file() else QIcon()
         )
         self.btn_showtime.setIcon(self._icon_lock_open)
-        self.btn_showtime.setIconSize(QSize(18, 18))
+        self.btn_showtime.setIconSize(QSize(24, 24))
         self.btn_showtime.setToolTip(
             "Showtime lock: blocks destructive edits (Delete, drag, "
             "inspector changes) so an accidental click can't break a "

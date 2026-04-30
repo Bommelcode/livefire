@@ -289,7 +289,7 @@ def _lock_body(d: ImageDraw.ImageDraw, *, closed: bool) -> None:
         d.pieslice(outer_box, start=180, end=360, fill=WHITE)
         d.pieslice(inner_box, start=180, end=360, fill=(0, 0, 0, 0))
         # De ring heeft een onderste-rand die de body ontmoet; om geen
-        # gat te tonen tussen ring en body vullen we die strip.
+        # gat te tonen tussen ring en body vullen we de zijflanken.
         d.rectangle(
             [cx - bracket_outer_r, bracket_cy,
              cx - bracket_inner_r, body_top + 2],
@@ -301,17 +301,40 @@ def _lock_body(d: ImageDraw.ImageDraw, *, closed: bool) -> None:
             fill=WHITE,
         )
     else:
-        # Open: alleen de linker-helft van de bow blijft staan, en die
-        # is licht naar links gekanteld zodat 't onmiskenbaar 'open' is.
-        # Tekenen via pieslice 180° → 270° (linker-bovenhoek), plus een
-        # losse poot links omhoog.
-        d.pieslice(outer_box, start=180, end=315, fill=WHITE)
-        d.pieslice(inner_box, start=180, end=315, fill=(0, 0, 0, 0))
-        # Linker poot tussen ring-onderkant en body-bovenkant — vult de
-        # naadlijn netjes op.
+        # Open: bow zit los van de body — duidelijk gat ertussen, en
+        # de rechter-poot is afgekapt zodat 't onmiskenbaar "open" is.
+        # We tilten de hele bow ~18 px omhoog en knippen 'm horizontaal
+        # iets korter aan de rechterkant.
+        lift = 24
+        outer_box_lift = [
+            cx - bracket_outer_r, bracket_cy - bracket_outer_r - lift,
+            cx + bracket_outer_r, bracket_cy + bracket_outer_r - lift,
+        ]
+        inner_box_lift = [
+            cx - bracket_inner_r, bracket_cy - bracket_inner_r - lift,
+            cx + bracket_inner_r, bracket_cy + bracket_inner_r - lift,
+        ]
+        # Linker-driekwart van de bow (180° → 360°-min-rechter-flank).
+        # We trekken 'm tot ~330° (= rechtsonder helemaal door) en knippen
+        # de rechter-poot weg door geen verticale-flank-rect daar te
+        # tekenen. Plus de body raakt de bow nu niet meer (lift > 0).
+        d.pieslice(outer_box_lift, start=180, end=360, fill=WHITE)
+        d.pieslice(inner_box_lift, start=180, end=360, fill=(0, 0, 0, 0))
+        # Alleen de LINKER flank tussen bow-bottom en zou-naar-body —
+        # nu een korte poot (16 px) die hangt onder de bow, niet naar
+        # de body reikt.
+        leg_top = bracket_cy - lift
+        leg_bottom = leg_top + 16
         d.rectangle(
-            [cx - bracket_outer_r, bracket_cy,
-             cx - bracket_inner_r, body_top + 2],
+            [cx - bracket_outer_r, leg_top,
+             cx - bracket_inner_r, leg_bottom],
+            fill=WHITE,
+        )
+        # Rechter flank: knippen we weg. Halverwege "ophangen" — een nóg
+        # kortere stomp van 8 px om aan te geven dat 'ie open hangt.
+        d.rectangle(
+            [cx + bracket_inner_r, leg_top,
+             cx + bracket_outer_r, leg_top + 8],
             fill=WHITE,
         )
 
