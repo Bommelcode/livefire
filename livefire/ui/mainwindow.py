@@ -188,6 +188,9 @@ class MainWindow(QMainWindow):
         # Showtime-lock state. Default uit; wijziging gaat via de toggle
         # in de transport-bar (transport.showtime_toggled → handler).
         self._showtime: bool = False
+        # Eenmalig explainer-popup wanneer de operator voor 't eerst per
+        # session tegen de lock aanloopt. Reset per app-start.
+        self._blocked_explainer_shown: bool = False
 
         # Autosave — schrijft elke 30s (en na elke GO) een sidecar-
         # bestand zodat een onverwachte exit niet alle voorbereidings-
@@ -1194,14 +1197,35 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Showtime lock OFF", 3000)
 
     def _destructive_blocked(self) -> bool:
-        """Centrale gate voor alle workspace-mutaties. Toont een korte
-        statusbar-melding zodat een operator die per ongeluk Ctrl+V
-        drukt tijdens de show meteen ziet waarom er niets gebeurt."""
+        """Centrale gate voor alle workspace-mutaties. Status-melding,
+        rode flash op de showtime-knop, en de eerste keer per app-run
+        een kleine popup die de operator uitlegt wat er aan de hand is."""
         if not self._showtime:
             return False
         self.statusBar().showMessage(
             "Action blocked — Showtime lock is ON", 2500
         )
+        # Knop een paar seconden rood laten oplichten — visueel duidelijk
+        # waarom de actie niet doorging, ook als de operator niet naar de
+        # statusbalk kijkt.
+        if hasattr(self, "transport"):
+            self.transport.flash_blocked()
+        # Eenmalig per app-start een uitleg-popup — beoogd voor operators
+        # die voor 't eerst tegen de lock aanlopen. We gooien 'm niet bij
+        # iedere blokkade want dat zou irritant worden.
+        if not getattr(self, "_blocked_explainer_shown", False):
+            self._blocked_explainer_shown = True
+            QMessageBox.information(
+                self,
+                "Showtime lock active",
+                "The Showtime lock is engaged so destructive edits "
+                "(delete, drag-reorder, inspector changes, undo/redo) "
+                "are blocked.\n\n"
+                "GO, Stop All and the rest of the playback controls "
+                "keep working.\n\n"
+                "Click the 🔒 Showtime button to unlock when you need "
+                "to edit.",
+            )
         return True
 
     # ---- crash + recovery -------------------------------------------------
