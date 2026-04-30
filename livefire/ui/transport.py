@@ -146,70 +146,60 @@ class TransportWidget(QWidget):
         sep.setFrameShadow(QFrame.Shadow.Sunken)
         row1.addWidget(sep)
 
-        # Twee status-tegels (NEXT, ACTIVE) in dezelfde stijl: kleine
-        # caps-label bovenaan, grote waarde eronder. Elk heeft 'n eigen
-        # accent-kleur zodat de drie onderdelen visueel los blijven.
-        # Helper-methodes onderaan formatteren de HTML-string.
-        info_font = QFont("Segoe UI Semibold")
-        info_font.setPointSize(13)
+        # NEXT-tegel — kleine caps-label "NEXT" boven, grote cue-naam
+        # eronder. Lettertype is Segoe UI Light (display-stijl) voor de
+        # naam zelf; caps-label blijft semibold voor leesbaarheid.
+        # Font-size wordt dynamisch aangepast in _adjust_responsive_fonts.
+        self._info_font_pt = 14  # base; resizeEvent past 'm aan
+        self._info_font = QFont("Segoe UI Light")
+        self._info_font.setPointSize(self._info_font_pt)
 
         self.lbl_playhead = QLabel()
-        self.lbl_playhead.setFont(info_font)
+        self.lbl_playhead.setFont(self._info_font)
         self.lbl_playhead.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_playhead.setToolTip("The cue that will fire on the next GO")
         self.lbl_playhead.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
-        row1.addWidget(self.lbl_playhead, 1)
+        row1.addWidget(self.lbl_playhead, 2)
 
-        sep_inner = QFrame()
-        sep_inner.setFrameShape(QFrame.Shape.VLine)
-        sep_inner.setFrameShadow(QFrame.Shadow.Sunken)
-        row1.addWidget(sep_inner)
-
-        self.lbl_active = QLabel()
-        self.lbl_active.setFont(info_font)
-        self.lbl_active.setTextFormat(Qt.TextFormat.RichText)
-        self.lbl_active.setToolTip("Number of cues currently playing")
-        self.lbl_active.setMinimumWidth(0)
-        row1.addWidget(self.lbl_active)
-
-        sep_inner2 = QFrame()
-        sep_inner2.setFrameShape(QFrame.Shape.VLine)
-        sep_inner2.setFrameShadow(QFrame.Shadow.Sunken)
-        row1.addWidget(sep_inner2)
-        # Initiële render zodat de labels niet leeg starten.
+        sep_next_now = QFrame()
+        sep_next_now.setFrameShape(QFrame.Shape.VLine)
+        sep_next_now.setFrameShadow(QFrame.Shadow.Sunken)
+        row1.addWidget(sep_next_now)
+        # Initiële render zodat 't label niet leeg start.
         self.set_playhead(0, 0, "")
-        self.set_active_count(0)
+        # ACTIVE-label blijft achter als hidden widget — set_active_count
+        # is een no-op nu, maar de Public API blijft compatible.
+        self.lbl_active = QLabel()
+        self.lbl_active.hide()
 
-        # NOW PLAYING tile — naam van de spelende cue (zelfde stijl als
-        # NEXT/ACTIVE). Stretcht naar links.
+        # NOW PLAYING tile — naam van de spelende cue.
         self.lbl_countdown_name = QLabel()
         self.lbl_countdown_name.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.lbl_countdown_name.setFont(info_font)
+        self.lbl_countdown_name.setFont(self._info_font)
         self.lbl_countdown_name.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_countdown_name.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
-        row1.addWidget(self.lbl_countdown_name, 1)
+        row1.addWidget(self.lbl_countdown_name, 2)
 
-        # Twee grote timers achter de naam — ELAPSED + REMAIN, beide in
-        # monospace zodat de digits niet schokken bij elke tick.
-        timer_font = QFont("Consolas")
-        timer_font.setPointSize(36)
-        timer_font.setBold(True)
+        # Twee grote timers achter de naam — ELAPSED + REMAIN, monospace
+        # zodat de digits niet schokken bij elke tick. Font-size is
+        # responsive (zie _adjust_responsive_fonts).
+        self._timer_font_pt = 40  # base; resizeEvent past 'm aan
+        self._timer_font = QFont("Consolas")
+        self._timer_font.setPointSize(self._timer_font_pt)
+        self._timer_font.setBold(True)
 
-        # Beide timers krijgen 'n vaste min-width zodat ze altijd zichtbaar
-        # zijn (anders verdwijnen ze naar 0 px omdat de NOW-PLAYING tile
-        # met stretch=1 alle ruimte opslokt). 140 px past 'm:ss\nXX:XX
-        # bij 36pt monospace. Verticale policy: Preferred zodat 'ie netjes
-        # uitgelijnd staat op de label-baseline.
-        TIMER_MIN_W = 140
+        # Min-width per timer. Bij smaller venster shrinkt 'ie via 't
+        # font-size; min-width hier voorkomt 0px-collapse.
+        TIMER_MIN_W = 110
         self.lbl_elapsed = QLabel("—:—")
         self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_elapsed.setFont(timer_font)
+        self.lbl_elapsed.setFont(self._timer_font)
         self.lbl_elapsed.setStyleSheet(f"color: {OK};")
         self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
         self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
@@ -219,7 +209,7 @@ class TransportWidget(QWidget):
         # 'lbl_countdown' aanroept blijft werken — 't is nu de REMAIN-tile.
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_countdown.setFont(timer_font)
+        self.lbl_countdown.setFont(self._timer_font)
         self.lbl_countdown.setStyleSheet(f"color: {ACCENT};")
         self.lbl_countdown.setToolTip(
             "Remaining time of the longest-running audio cue. With infinite "
@@ -279,15 +269,40 @@ class TransportWidget(QWidget):
         )
 
     def set_active_count(self, n: int) -> None:
-        """ACTIVE-tile: groen "ACTIVE" boven, count eronder. Count wordt
-        groen opgelicht zodra ≥1 cue speelt zodat 'ie zichtbaar is op
-        afstand."""
-        value_color = OK if n > 0 else TEXT_DIM
-        self.lbl_active.setText(
-            f'<span style="color:{OK};font-size:8pt;'
-            f'letter-spacing:1px;">ACTIVE</span><br>'
-            f'<span style="color:{value_color};">{n}</span>'
-        )
+        """No-op: ACTIVE-tile is niet meer in de header. Method blijft
+        bestaan zodat bestaande callers (mainwindow) niet breken."""
+        return
+
+    def resizeEvent(self, event):  # noqa: N802 — Qt convention
+        super().resizeEvent(event)
+        self._adjust_responsive_fonts()
+
+    def _adjust_responsive_fonts(self) -> None:
+        """Pas de font-sizes van de header-tiles aan op de huidige
+        widget-hoogte. Zo blijven NEXT/NOW PLAYING en de twee timers
+        groot wanneer er ruimte is, en krimpen ze gracieus mee in een
+        smal venster of tweede monitor met lagere DPI."""
+        # Row 1 hoogte = transport hoogte minus de cue-toolbar-rij eronder.
+        # We schatten rij 1 op ~70 % van de totale hoogte; de exacte split
+        # is niet kritisch — relatief schalen is wat telt.
+        h = max(60, self.height())
+        # Timer-font: lineair tussen 24 en 60 pt op hoogte 70..160 px.
+        timer_pt = max(24, min(60, int(round(h * 0.55))))
+        if timer_pt != self._timer_font_pt:
+            self._timer_font_pt = timer_pt
+            self._timer_font.setPointSize(timer_pt)
+            self.lbl_elapsed.setFont(self._timer_font)
+            self.lbl_countdown.setFont(self._timer_font)
+        # Info-font (NEXT / NOW PLAYING values): 12..22 pt
+        info_pt = max(11, min(22, int(round(h * 0.20))))
+        if info_pt != self._info_font_pt:
+            self._info_font_pt = info_pt
+            self._info_font.setPointSize(info_pt)
+            self.lbl_playhead.setFont(self._info_font)
+            self.lbl_countdown_name.setFont(self._info_font)
+            # Re-render om 't HTML-fragment opnieuw met nieuwe font-sizes
+            # te tekenen (caps-label heeft eigen font-size in de HTML).
+            self._refresh_countdown()
 
     def set_cue_toolbar(self, widget: QWidget) -> None:
         """MainWindow propt zijn cue-toolbar in de slot onder Showtime.
