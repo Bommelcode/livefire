@@ -665,6 +665,7 @@ class MainWindow(QMainWindow):
             "workspace_name": ws_name,
             "workspace_dirty": bool(self.ws.dirty),
             "showtime_locked": bool(self._showtime),
+            "version": APP_VERSION,
         }
 
     def _on_state_change_for_feedback(self, cue_id: str) -> None:
