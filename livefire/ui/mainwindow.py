@@ -106,6 +106,11 @@ class MainWindow(QMainWindow):
         # tot volgende periodieke tick). Companion's feedback voelt dan
         # snappy.
         self.controller.cue_state_changed.connect(self._on_state_change_for_feedback)
+        # Companion vraagt na (re)connect een verse cuelist-snapshot via
+        # /livefire/snapshot/please. We pushen 't volledige plaatje opnieuw
+        # zodat namen, types en kleuren weer kloppen zonder dat de operator
+        # eerst een cue moet wijzigen.
+        self.controller.snapshot_requested.connect(self._broadcast_cuelist_snapshot)
         # NB. controller.playhead_changed → cue_list.set_playhead wordt
         # ná _build_ui() aangesloten, want de cue_list bestaat hier nog
         # niet.
@@ -579,7 +584,9 @@ class MainWindow(QMainWindow):
             return
         self.feedback.send_cuecount(len(self.ws.cues))
         for cue in self.ws.cues:
-            self.feedback.send_cue_meta(cue.cue_number, cue.name, cue.cue_type)
+            self.feedback.send_cue_meta(
+                cue.cue_number, cue.name, cue.cue_type, cue.color or "",
+            )
             self.feedback.send_cue_state(cue.cue_number, cue.state)
 
     # ---- reactive handlers ------------------------------------------------
@@ -636,7 +643,9 @@ class MainWindow(QMainWindow):
         # ongeacht welk veld is veranderd; het is goedkoop.
         cue = self.ws.find(_cue_id)
         if cue is not None and self.feedback.running:
-            self.feedback.send_cue_meta(cue.cue_number, cue.name, cue.cue_type)
+            self.feedback.send_cue_meta(
+                cue.cue_number, cue.name, cue.cue_type, cue.color or "",
+            )
             self.feedback.send_cue_state(cue.cue_number, cue.state)
         self._cue_field_refresh(_cue_id)
 

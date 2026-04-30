@@ -182,13 +182,18 @@ class OscFeedbackEngine(QObject):
             return
         self.send(f"/livefire/cue/{cue_number}/state", state)
 
-    def send_cue_meta(self, cue_number: str, name: str, cue_type: str) -> None:
-        """Naam + type van een cue — door MainWindow geëmit na elke
-        workspace-mutatie zodat Companion's preset-labels meebewegen."""
+    def send_cue_meta(
+        self, cue_number: str, name: str, cue_type: str, color: str = "",
+    ) -> None:
+        """Naam + type + kleur van een cue — door MainWindow geëmit na
+        elke workspace-mutatie zodat Companion's preset-labels mee-
+        bewegen. Kleur is een hex-string als ``"#c0392b"`` of leeg
+        wanneer de cue geen kleurtag heeft."""
         if not cue_number:
             return
         self.send(f"/livefire/cue/{cue_number}/name", name or "")
         self.send(f"/livefire/cue/{cue_number}/type", cue_type or "")
+        self.send(f"/livefire/cue/{cue_number}/color", color or "")
 
     def send_cuecount(self, count: int) -> None:
         self.send("/livefire/cuecount", int(count))
