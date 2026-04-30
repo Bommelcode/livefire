@@ -280,9 +280,9 @@ class InspectorWidget(QWidget):
             "• Auto-Continue — next cue starts as soon as this one starts its action\n"
             "• Auto-Follow — next cue starts after this one is finished"
         )
-        fl.addRow("Pre-wait (s)", self.sp_pre)
-        fl.addRow("Duration (s)", self.sp_dur)
-        fl.addRow("Post-wait (s)", self.sp_post)
+        fl.addRow("Pre-wait", self.sp_pre)
+        fl.addRow("Duration", self.sp_dur)
+        fl.addRow("Post-wait", self.sp_post)
         fl.addRow("Continue", self.cb_continue)
         lay.addWidget(grp_timing)
 
@@ -319,10 +319,10 @@ class InspectorWidget(QWidget):
         )
         al.addRow("Volume", self.sp_volume)
         al.addRow("Loops (0 = ∞)", self.sp_loops)
-        al.addRow("Start offset (s)", self.sp_start)
-        al.addRow("End offset (s)", self.sp_end)
-        al.addRow("Fade-in (s)", self.sp_fade_in)
-        al.addRow("Fade-out (s)", self.sp_fade_out)
+        al.addRow("Start offset", self.sp_start)
+        al.addRow("End offset", self.sp_end)
+        al.addRow("Fade-in", self.sp_fade_in)
+        al.addRow("Fade-out", self.sp_fade_out)
         lay.addWidget(self.grp_audio)
 
         # ---- Video ---------------------------------------------------------
@@ -350,8 +350,8 @@ class InspectorWidget(QWidget):
         self.sp_video_fade_in.setToolTip("Fade in from black.")
         self.sp_video_fade_out = self._spin_seconds(max_val=600.0)
         self.sp_video_fade_out.setToolTip("Fade to black at the end of the cue.")
-        vl.addRow("Fade-in (s)", self.sp_video_fade_in)
-        vl.addRow("Fade-out (s)", self.sp_video_fade_out)
+        vl.addRow("Fade-in", self.sp_video_fade_in)
+        vl.addRow("Fade-out", self.sp_video_fade_out)
         # Volume voor de audio-track van de video. Range −96..0 dB; libVLC's
         # audio_set_volume kapt boost boven 100% in de meeste builds, dus
         # we tonen geen + waarden.
@@ -378,8 +378,8 @@ class InspectorWidget(QWidget):
         self.sp_video_in.setToolTip("In point (the moment from which playback starts).")
         self.sp_video_out = self._spin_seconds(max_val=36000.0)
         self.sp_video_out.setToolTip("Out point (where the cue ends). 0 = play to end of file.")
-        vl.addRow("In point (s)", self.sp_video_in)
-        vl.addRow("Out point (s)", self.sp_video_out)
+        vl.addRow("In point", self.sp_video_in)
+        vl.addRow("Out point", self.sp_video_out)
 
         # Bidirectionele sync tussen timeline (drag) en spinboxes (veld).
         self.video_preview.in_point_changed.connect(self._set_video_in_from_timeline)
@@ -421,8 +421,8 @@ class InspectorWidget(QWidget):
             "Duration = 0 the image stays until another image cue on the "
             "same screen replaces it or a Stop cue closes it."
         )
-        il.addRow("Fade-in (s)", self.sp_image_fade_in)
-        il.addRow("Fade-out (s)", self.sp_image_fade_out)
+        il.addRow("Fade-in", self.sp_image_fade_in)
+        il.addRow("Fade-out", self.sp_image_fade_out)
         lay.addWidget(self.grp_image)
 
         # ---- Presentation --------------------------------------------------
@@ -584,7 +584,7 @@ class InspectorWidget(QWidget):
         self.sp_dmx_fade.setToolTip(
             "Fade duration in seconds. Only applied in Fade mode."
         )
-        dl.addRow("Fade time (s)", self.sp_dmx_fade)
+        dl.addRow("Fade time", self.sp_dmx_fade)
 
         self.ed_dmx_chase = QPlainTextEdit()
         self.ed_dmx_chase.setPlaceholderText("1:255 | 1:0,17:255 | 17:0")
@@ -597,7 +597,7 @@ class InspectorWidget(QWidget):
 
         self.sp_dmx_step = self._spin_seconds(max_val=600.0)
         self.sp_dmx_step.setToolTip("Time per chase step (seconds).")
-        dl.addRow("Step time (s)", self.sp_dmx_step)
+        dl.addRow("Step time", self.sp_dmx_step)
 
         self.sp_dmx_chase_loops = QSpinBox()
         self.sp_dmx_chase_loops.setRange(0, 9999)
@@ -622,7 +622,7 @@ class InspectorWidget(QWidget):
         wl = QFormLayout(self.grp_wait)
         self.sp_wait = self._spin_seconds(max_val=3600.0)
         self.sp_wait.setToolTip("How long this Wait cue pauses before playback continues.")
-        wl.addRow("Wait duration (s)", self.sp_wait)
+        wl.addRow("Wait duration", self.sp_wait)
         lay.addWidget(self.grp_wait)
 
         # ---- Group --------------------------------------------------------
