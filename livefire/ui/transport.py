@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy, QGridLayout,
 )
 
-from .style import ACCENT, TEXT_DIM
+from .style import ACCENT, ACCENT_ALT, TEXT_DIM, OK
 
 
 # Resource-paths voor de lock-icons. ``livefire/resources/icons/`` zit
@@ -132,13 +132,41 @@ class TransportWidget(QWidget):
         sep.setFrameShadow(QFrame.Shadow.Sunken)
         row1.addWidget(sep)
 
-        self.lbl_playhead = QLabel("Playhead: —")
-        self.lbl_playhead.setToolTip("The cue that will fire on the next GO")
-        row1.addWidget(self.lbl_playhead)
+        # Twee status-tegels (NEXT, ACTIVE) in dezelfde stijl: kleine
+        # caps-label bovenaan, grote waarde eronder. Elk heeft 'n eigen
+        # accent-kleur zodat de drie onderdelen visueel los blijven.
+        # Helper-methodes onderaan formatteren de HTML-string.
+        info_font = QFont("Segoe UI Semibold")
+        info_font.setPointSize(13)
 
-        self.lbl_active = QLabel("Active: 0")
+        self.lbl_playhead = QLabel()
+        self.lbl_playhead.setFont(info_font)
+        self.lbl_playhead.setTextFormat(Qt.TextFormat.RichText)
+        self.lbl_playhead.setToolTip("The cue that will fire on the next GO")
+        self.lbl_playhead.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
+        )
+        row1.addWidget(self.lbl_playhead, 1)
+
+        sep_inner = QFrame()
+        sep_inner.setFrameShape(QFrame.Shape.VLine)
+        sep_inner.setFrameShadow(QFrame.Shadow.Sunken)
+        row1.addWidget(sep_inner)
+
+        self.lbl_active = QLabel()
+        self.lbl_active.setFont(info_font)
+        self.lbl_active.setTextFormat(Qt.TextFormat.RichText)
         self.lbl_active.setToolTip("Number of cues currently playing")
+        self.lbl_active.setMinimumWidth(0)
         row1.addWidget(self.lbl_active)
+
+        sep_inner2 = QFrame()
+        sep_inner2.setFrameShape(QFrame.Shape.VLine)
+        sep_inner2.setFrameShadow(QFrame.Shadow.Sunken)
+        row1.addWidget(sep_inner2)
+        # Initiële render zodat de labels niet leeg starten.
+        self.set_playhead(0, 0, "")
+        self.set_active_count(0)
 
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -159,15 +187,13 @@ class TransportWidget(QWidget):
         )
         row1.addWidget(self.lbl_countdown, 2)  # stretch=2 → claimt 't centrum
 
-        self.lbl_countdown_name = QLabel("")
+        self.lbl_countdown_name = QLabel()
         self.lbl_countdown_name.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        name_font = QFont()
-        name_font.setPointSize(10)
-        self.lbl_countdown_name.setFont(name_font)
-        self.lbl_countdown_name.setStyleSheet(f"color: {TEXT_DIM};")
-        # Idem: laat de naam krimpen i.p.v. 'n vaste 180 px af te dwingen.
+        self.lbl_countdown_name.setFont(info_font)
+        self.lbl_countdown_name.setTextFormat(Qt.TextFormat.RichText)
+        # Laat 'm krimpen i.p.v. 'n vaste min-width af te dwingen.
         self.lbl_countdown_name.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
@@ -199,17 +225,39 @@ class TransportWidget(QWidget):
 
     # ---- public API --------------------------------------------------------
 
+    @staticmethod
+    def _html_escape(text: str) -> str:
+        return (
+            text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        )
+
     def set_playhead(self, index: int, total: int, cue_label: str = "") -> None:
-        if index >= total:
-            self.lbl_playhead.setText(f"Playhead: end ({total})")
+        """NEXT-tile: kleine "NEXT"-caps in oranje, daaronder de cue-naam
+        of "—" als 'r geen volgende is. Twee regels in één label."""
+        if total == 0:
+            value = "—"
+        elif index >= total:
+            value = f"end ({total})"
         else:
-            label = f"{index + 1}/{total}"
+            value = f"{index + 1}/{total}"
             if cue_label:
-                label += f" — {cue_label}"
-            self.lbl_playhead.setText(f"Playhead: {label}")
+                value += f" · {cue_label}"
+        self.lbl_playhead.setText(
+            f'<span style="color:{ACCENT_ALT};font-size:8pt;'
+            f'letter-spacing:1px;">NEXT</span><br>'
+            f'<span style="color:white;">{self._html_escape(value)}</span>'
+        )
 
     def set_active_count(self, n: int) -> None:
-        self.lbl_active.setText(f"Active: {n}")
+        """ACTIVE-tile: groen "ACTIVE" boven, count eronder. Count wordt
+        groen opgelicht zodra ≥1 cue speelt zodat 'ie zichtbaar is op
+        afstand."""
+        value_color = OK if n > 0 else TEXT_DIM
+        self.lbl_active.setText(
+            f'<span style="color:{OK};font-size:8pt;'
+            f'letter-spacing:1px;">ACTIVE</span><br>'
+            f'<span style="color:{value_color};">{n}</span>'
+        )
 
     def set_cue_toolbar(self, widget: QWidget) -> None:
         """MainWindow propt zijn cue-toolbar in de slot onder Showtime.
@@ -267,9 +315,17 @@ class TransportWidget(QWidget):
         info = self._countdown_source() if self._countdown_source else None
         if info is None:
             self.lbl_countdown.setText("—:—")
-            self.lbl_countdown_name.setText("")
+            self.lbl_countdown_name.setText(
+                f'<span style="color:{TEXT_DIM};font-size:8pt;'
+                f'letter-spacing:1px;">NOW PLAYING</span><br>'
+                f'<span style="color:{TEXT_DIM};font-style:italic;">—</span>'
+            )
             return
         name, seconds, is_countdown = info
         prefix = "" if is_countdown else "+"
         self.lbl_countdown.setText(f"{prefix}{_fmt_time(seconds)}")
-        self.lbl_countdown_name.setText(name)
+        self.lbl_countdown_name.setText(
+            f'<span style="color:{ACCENT};font-size:8pt;'
+            f'letter-spacing:1px;">NOW PLAYING</span><br>'
+            f'<span style="color:white;">{self._html_escape(name)}</span>'
+        )
