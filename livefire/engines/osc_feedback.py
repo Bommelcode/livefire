@@ -198,6 +198,13 @@ class OscFeedbackEngine(QObject):
     def send_cuecount(self, count: int) -> None:
         self.send("/livefire/cuecount", int(count))
 
+    def send_version(self, version: str) -> None:
+        """liveFire's APP_VERSION naar Companion. Bedoeld voor de version-
+        banner op de homescreen (`liveFire X.Y.Z • mod A.B.C`). Eenmalig
+        bij start van de feedback-engine — geen reden om dit elke tick
+        te pushen, de versie verandert niet tijdens runtime."""
+        self.send("/livefire/version", version or "")
+
     # ---- intern ------------------------------------------------------------
 
     def _on_tick(self) -> None:
@@ -228,6 +235,19 @@ class OscFeedbackEngine(QObject):
             1 if snap.get("countdown_active", False) else 0,
         )
         self.send("/livefire/elapsed", float(snap.get("elapsed", 0.0)))
+        # Workspace + showtime meta — gevoed door MainWindow.snapshot().
+        # Strings + int vlaggen, samen ~80 bytes per tick. Verwaarloosbaar
+        # op localhost UDP en de operator ziet meteen of er ongesaved werk
+        # ligt of dat de cuelist bevroren is.
+        self.send("/livefire/workspace_name", str(snap.get("workspace_name", "")))
+        self.send(
+            "/livefire/workspace_dirty",
+            1 if snap.get("workspace_dirty", False) else 0,
+        )
+        self.send(
+            "/livefire/showtime_locked",
+            1 if snap.get("showtime_locked", False) else 0,
+        )
 
 
 def register_status(engine: OscFeedbackEngine | None = None) -> None:

@@ -621,6 +621,8 @@ class MainWindow(QMainWindow):
         # weet welke cues bestaan (anders pas zichtbaar bij de eerste
         # state-change op een cue).
         self._broadcast_cuelist_snapshot()
+        # liveFire-versie pushen voor de version-banner-tile in Companion.
+        self.feedback.send_version(APP_VERSION)
 
     # ---- snapshot-provider voor OscFeedbackEngine ------------------------
 
@@ -645,6 +647,12 @@ class MainWindow(QMainWindow):
         else:
             phn = ""
         elapsed = self.controller.primary_elapsed() or 0.0
+        # Workspace-meta voor de Companion-homescreen tiles. Naam is de
+        # bestandsnaam zonder extensie (compactere weergave op een knop);
+        # dirty=1 betekent unsaved edits. Showtime-lock geeft de operator
+        # de zekerheid dat de cuelist bevroren is.
+        ws_path = self.ws.path
+        ws_name = ws_path.stem if ws_path is not None else "Untitled"
         return {
             "playhead": playhead,
             "playhead_total": total,
@@ -654,6 +662,9 @@ class MainWindow(QMainWindow):
             "remaining_label": remaining_label,
             "countdown_active": countdown_active,
             "elapsed": elapsed,
+            "workspace_name": ws_name,
+            "workspace_dirty": bool(self.ws.dirty),
+            "showtime_locked": bool(self._showtime),
         }
 
     def _on_state_change_for_feedback(self, cue_id: str) -> None:
