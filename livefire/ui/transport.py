@@ -241,18 +241,22 @@ class TransportWidget(QWidget):
         self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
 
         if self._theme_id in ("cinematic", "qlab"):
-            # Hero countdown: mega-grote REMAIN bovenin, ELAPSED klein
-            # eronder maar in de hero-row, niet in row1.
-            self._timer_font.setPointSize(80)
-            self.lbl_countdown.setFont(self._timer_font)
+            # Hero countdown: mega-grote REMAIN bovenin via een stylesheet
+            # met expliciete font-size — anders overschrijft de globale
+            # QSS-regel `QWidget { font-size: 9pt; }` onze setFont() en
+            # blijft de hero countdown op default-grootte hangen. Met
+            # font-size in de widget-stylesheet wint deze altijd.
+            self.lbl_countdown.setStyleSheet(
+                f"color: {ACCENT}; font-size: 96pt; font-weight: bold;"
+            )
             hero = QVBoxLayout()
             hero.setContentsMargins(0, 0, 0, 0)
             hero.setSpacing(0)
             hero.addWidget(self.lbl_countdown)
             # ELAPSED klein onder REMAIN — Cinematic/QLab look.
-            small = QFont("Consolas")
-            small.setPointSize(11)
-            self.lbl_elapsed.setFont(small)
+            self.lbl_elapsed.setStyleSheet(
+                f"color: {TEXT_DIM}; font-size: 11pt;"
+            )
             hero.addWidget(self.lbl_elapsed)
             outer.addLayout(hero)
             outer.addWidget(row1_widget)
@@ -354,20 +358,16 @@ class TransportWidget(QWidget):
             t = max(0.0, min(1.0, t))
             return int(round(value_min + t * (value_max - value_min)))
 
-        # Cinematic/QLab krijgen een veel grotere countdown-range omdat
-        # ze een dedicated hero-row hebben. Andere themes blijven compact.
-        if self._theme_id in ("cinematic", "qlab"):
-            timer_pt = _scale(48, 100)
-        else:
-            # Stacked timers in 'n 80-px rij; 22..32 pt is praktisch.
+        # Cinematic/QLab gebruiken een static 96pt via stylesheet (zie
+        # __init__) zodat 'ie niet shrinks op smaller windows. Andere
+        # themes scalen 22..32 pt mee met breedte.
+        if self._theme_id not in ("cinematic", "qlab"):
             timer_pt = _scale(22, 32)
-        if timer_pt != self._timer_font_pt:
-            self._timer_font_pt = timer_pt
-            self._timer_font.setPointSize(timer_pt)
-            # ELAPSED schaalt niet voor cinematic/qlab — die heeft eigen 11pt.
-            if self._theme_id not in ("cinematic", "qlab"):
+            if timer_pt != self._timer_font_pt:
+                self._timer_font_pt = timer_pt
+                self._timer_font.setPointSize(timer_pt)
                 self.lbl_elapsed.setFont(self._timer_font)
-            self.lbl_countdown.setFont(self._timer_font)
+                self.lbl_countdown.setFont(self._timer_font)
         info_pt = _scale(9, 13)
         if info_pt != self._info_font_pt:
             self._info_font_pt = info_pt
