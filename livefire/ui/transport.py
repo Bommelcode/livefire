@@ -375,17 +375,35 @@ class TransportWidget(QWidget):
     def flash_blocked(self) -> None:
         """Twee-keer-knipper-flash op de showtime-knop wanneer een edit
         geblockd is. Cycle: rood (200 ms) → off (180 ms) → rood (200 ms)
-        → off. Een tweede call midden in 'n flash-cycle herstart van 0
-        zonder de UI te brokken (singleShots blijven gestapeld lopen
-        maar zetten de stijl idempotent)."""
-        on_style = self._FLASH_STYLE
-        btn = self.btn_showtime
-        # Twee korte pulsen — leesbaarder als 'attention-grabber' dan een
-        # statische rode kleur, vooral als de knop al rood is door :checked.
-        QTimer.singleShot(0, lambda: btn.setStyleSheet(on_style))
-        QTimer.singleShot(200, lambda: btn.setStyleSheet(""))
-        QTimer.singleShot(380, lambda: btn.setStyleSheet(on_style))
-        QTimer.singleShot(580, lambda: btn.setStyleSheet(""))
+        → off. We gebruiken één persistente QTimer + een step-counter
+        i.p.v. vier overlappende singleShots — anders kan een snelle
+        herhaling de stijl onbedoeld op rood laten hangen omdat de oude
+        en nieuwe lambda's door elkaar fire'n.
+        """
+        # Bestaande flash interrumperen wanneer we opnieuw worden geroepen.
+        if not hasattr(self, "_flash_timer"):
+            self._flash_timer = QTimer(self)
+            self._flash_timer.setSingleShot(True)
+            self._flash_timer.timeout.connect(self._flash_step)
+        self._flash_timer.stop()
+        self._flash_step_idx = 0
+        self._flash_step()
+
+    def _flash_step(self) -> None:
+        """Eén stap in de flash-cycle. 0=on,1=off,2=on,3=off,4=eind."""
+        cycle = (
+            (self._FLASH_STYLE, 200),  # on 200ms
+            ("", 180),                 # off 180ms
+            (self._FLASH_STYLE, 200),  # on 200ms
+            ("", 0),                   # off, einde
+        )
+        if self._flash_step_idx >= len(cycle):
+            return
+        style, next_delay = cycle[self._flash_step_idx]
+        self.btn_showtime.setStyleSheet(style)
+        self._flash_step_idx += 1
+        if next_delay > 0:
+            self._flash_timer.start(next_delay)
 
     # ---- countdown ---------------------------------------------------------
 

@@ -843,6 +843,23 @@ class InspectorWidget(QWidget):
         """Back-compat wrapper — roept set_cues aan."""
         self.set_cues([cue] if cue is not None else [])
 
+    def set_readonly(self, on: bool) -> None:
+        """Disable alle interactieve form-velden tijdens showtime-lock.
+        scroll_area + headers blijven enabled zodat de operator nog wel
+        kan kijken. _destructive_blocked() vangt eventuele muterende
+        paden alsnog af; deze method zorgt voor de UI-state-feedback."""
+        # Iterate over alle child-widgets die input accepteren — netter
+        # dan elke spinbox/combo/edit hier handmatig op te sommen.
+        for child in self.findChildren(QWidget):
+            if isinstance(child, (
+                QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox,
+                QPlainTextEdit, QPushButton,
+            )):
+                # Save-as / Browse-knoppen op de Pro-banner laten we wel
+                # enabled (geen workspace-mutatie). Maar push-knoppen op
+                # cue-velden (Browse, Test verzenden, Learn) gaan uit.
+                child.setEnabled(not on)
+
     def set_cues(self, cues: list[Cue]) -> None:
         self._updating = True
         self.cues = list(cues)
@@ -1070,10 +1087,25 @@ class InspectorWidget(QWidget):
         self._update_visibility(new_type)
         if self._updating or not self.cues:
             return
-        for c in self.cues:
-            c.cue_type = new_type
-        self.workspace.dirty = True
-        self.cue_changed.emit(self.cues[0])
+        # Skip als geen enkele cue daadwerkelijk verandert — voorkomt
+        # 'n undo-entry zonder mutatie als de combobox via setEditorData
+        # weer dezelfde waarde toont.
+        targets = [c for c in self.cues if c.cue_type != new_type]
+        if not targets:
+            return
+        target_ids = [c.id for c in targets]
+        sink = getattr(self, "command_sink", None)
+        if sink is not None:
+            # Via undo-stack zodat type-change undoable is én de
+            # showtime-lock 'm netjes blokkeert in plaats van stilletjes
+            # door te laten.
+            sink.push_set_field(target_ids, "cue_type", new_type)
+        else:
+            # Test-fallback (geen sink) — direct muteren.
+            for c in targets:
+                c.cue_type = new_type
+            self.workspace.dirty = True
+            self.cue_changed.emit(self.cues[0])
 
     def _on_any_change(self) -> None:
         if self._updating or not self.cues:

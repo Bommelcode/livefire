@@ -33,7 +33,17 @@ class Workspace:
         for i, c in enumerate(self.cues):
             if c.id == cue_id:
                 self.dirty = True
-                return self.cues.pop(i)
+                removed = self.cues.pop(i)
+                # Children van een verwijderde group hebben nog 'n
+                # parent_group_id-pointer naar 'n cue die niet meer
+                # bestaat. Zonder reset blijven is_in_group / descendants_of
+                # ze als members behandelen tot de workspace handmatig
+                # wordt opgeschoond. Reset → ze worden top-level.
+                if removed.cue_type == CueType.GROUP:
+                    for child in self.cues:
+                        if child.parent_group_id == cue_id:
+                            child.parent_group_id = ""
+                return removed
         return None
 
     def find(self, cue_id: str) -> Cue | None:

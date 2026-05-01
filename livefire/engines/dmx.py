@@ -526,7 +526,12 @@ class DmxEngine(QObject):
         # Single-threaded path (alleen _send_loop roept 'm aan), dus de
         # sequence-mutatie hier is veilig zonder lock. `buffer` is een
         # bytes-snapshot van universe.buffer, gepakt onder de engine-lock.
-        if self._sock is None:
+        # We cachen self._sock LOCAAL omdat stop() vanuit de Qt-thread
+        # 'm op None kan zetten tijdens onze sendto — anders krijg je
+        # AttributeError mid-send. Een dichte socket levert hooguit
+        # OSError op (fanged door _send_loop's outer try/except).
+        sock = self._sock
+        if sock is None:
             return
         universe.sequence = (universe.sequence + 1) & 0xFF
         if universe.sequence == 0:
@@ -536,13 +541,13 @@ class DmxEngine(QObject):
                 universe.number, universe.sequence, buffer,
             )
             host = universe.host or "<broadcast>"
-            self._sock.sendto(packet, (host, universe.port))
+            sock.sendto(packet, (host, universe.port))
         else:  # sacn
             packet = encode_sacn_dmx(
                 universe.number, universe.sequence, buffer,
             )
             host = universe.host or sacn_multicast_address(universe.number)
-            self._sock.sendto(packet, (host, universe.port))
+            sock.sendto(packet, (host, universe.port))
 
 
 # ---- status-registratie ----------------------------------------------------
