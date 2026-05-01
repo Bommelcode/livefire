@@ -5,6 +5,107 @@ Alle noemenswaardige wijzigingen aan dit project. Format volgens
 
 ## [Unreleased]
 
+## [0.5.3] — 2026-05-01
+
+UI-pass + dual audit-pass. Ge-overhaule transport-bar, klassieke QLab-
+stijl countdown, responsive lettertypes, stevigere Companion-integratie
+en 13 audit-fixes voor crash-, race- en data-corruptie-gaten.
+
+### Toegevoegd
+- **Showtime-lock visuele feedback**. Lock-glyph wordt groen (uitwisselbaar
+  met rode flash) zodra geëngageerd, eerste blokkeerde-edit per session
+  toont een uitleg-popup, daarna alleen statusbar + flash. `set_readonly`
+  geïmplementeerd op cuelist (drag uit, Continue-edit geblokt) en inspector
+  (alle form-velden disabled). De flash gebruikt nu één persistente
+  QTimer met step-counter — geen stuck-red bij rapid-fire meer.
+- **Showtime-toggle via Companion**. `/livefire/showtime/toggle` en
+  `/livefire/showtime/set <0|1>` schakelen de lock van afstand. Module
+  preset bevat ook 'n indicator die de state toont.
+- **Workspace + version meta-push** voor Companion. `/livefire/workspace_name`,
+  `/livefire/workspace_dirty`, `/livefire/showtime_locked`, `/livefire/version`
+  worden elke 100 ms meegezonden zodat 'n homescreen-tile dirty-state /
+  app-versie kan tonen. Save-knop op de Companion (`/livefire/save`) +
+  groene SAVED-flash. Plus klok-vars (`clock_h1..s2`) voor 'n HH:MM:SS
+  homescreen-display verdeeld over 8 knoppen.
+- **Inspector-toggle** in de transport-bar — verbergt het rechterpaneel
+  voor meer cuelist-breedte op kleine schermen.
+- **Companion-glyph-set**: 24 PNG's (lock-open/closed white/red/green,
+  home, cart_wall, transport, cue-types, etc.) onder
+  `tools/gen_glyphs.py` → `Downloads/livefire-glyphs/`. Bundled lock-icons
+  in `livefire/resources/icons/` voor de in-app showtime-knop.
+- **Per-cue color push** naar Companion. `/livefire/cue/<n>/color` geeft
+  fire-buttons mee-kleurende achtergrond via een nieuwe `cue_color`
+  advanced-feedback in de module. Standby-tile + bij reconnect een
+  `/livefire/snapshot/please` round-trip zodat namen niet verdwijnen
+  na re-import.
+- **OSC-feedback elapsed timer**. `/livefire/elapsed` voor split-tile
+  ELAPSED-display op Stream Deck.
+
+### Veranderd
+- **Transport-bar layout**. Twee-kolommen-met-cue-toolbar onder Showtime,
+  GO/Stop dubbele hoogte (120×80) gelijk-formaat, Showtime+Inspector
+  toggles onder elkaar, klassieke QLab-stijl grote REMAIN-countdown
+  centraal met klein 'elapsed M:SS' caption eronder. Cue-toolbar
+  gebruikt nu een `FlowLayout` die wrapt naar 'n tweede regel zodra
+  't venster smaller wordt, in plaats van te overlappen met Stop All.
+- **Responsive font-sizing**: header-fonts schalen lineair met venster-
+  breedte (24..64 pt timers, 11..18 pt namen), zodat 't op een tweede
+  monitor of klein cue-laptop netjes blijft.
+- **Cuelist visual** — playhead krijgt nu '▶'-marker + lichte witte
+  wash i.p.v. een oranje accent-bar (was onzichtbaar op oranje cues).
+  Selectie-overlay is semi-transparant zodat de cue-color-tint door de
+  selectie heen blijft schijnen. Continue-cell (combobox + popup) pakt
+  de cue-kleur als achtergrond.
+- **Single-instance lock** via QSharedMemory zodat twee `python -m livefire`
+  niet tegelijk kunnen draaien (voorkomt OSC-port en audio-device clashes).
+- **Audio preload**: bij workspace-load worden alle audio-cues op een
+  bounded ThreadPoolExecutor (4 workers) gedecodeerd naar een cache,
+  zodat fire = 0 ms disk + decode-latency. Tick-fix: `_start_cue` met
+  `pre_wait=0` schiet meteen door naar action zonder op de volgende
+  20 ms-tick te wachten.
+
+### Opgelost (audit-pass)
+- **Showtime-lock bypass via Type-combobox** — `_on_type_change` gaat
+  nu via `command_sink.push_set_field` zodat 't undoable is én netjes
+  geblokkeerd in showtime.
+- **AUTO_CONTINUE NameError** — `_begin_action` referrde
+  `in_group_chain` zonder prefix waar `r.in_group_chain` bedoeld was.
+  Crashed elke AUTO_CONTINUE chain.
+- **Audio loop start-offset** — looped audio sprong naar frame 0 i.p.v.
+  naar de start-offset, dus een trim-in cue verloor z'n in-point op
+  elke loop.
+- **DMX `_sock` race** — `_send_universe` cachet `self._sock` lokaal
+  zodat een Qt-thread `stop()` mid-`sendto` geen AttributeError op
+  None-deref triggert.
+- **VideoPreviewWidget libVLC-leak** — explicit shutdown vanuit
+  `MainWindow.closeEvent`, anders accumuleerden libVLC-instances per
+  session.
+- **PowerPoint media-extract basename collision** — twee zip-paden
+  met dezelfde basename (e.g. `embeddings/audio1.mp3` en `media/audio1.mp3`)
+  overschreven elkaar; nu krijgt de tweede een `_1`-suffix.
+- **Audio callback try/except** — een gebroken AudioSource kan de
+  PortAudio-stream niet meer aborteeren; bad source wordt gemarkeerd
+  als finished, andere cues blijven spelen.
+- **Audio `set_device` cache-stale** — clear `_decoded_cache` +
+  `_preload_in_flight` op samplerate-change en discard in-flight
+  worker resultaten als de rate intussen wisselde, anders pitch-bug
+  op eerste play na device-switch.
+- **Workspace cycle-protectie** — `descendants_of` + `is_in_group`
+  visited-set tegen kapotte parent_group_id-cycles. `remove_cue`
+  reset dangling pointers van children naar verwijderde groups.
+- **Companion broadcast on workspace open** — `action_open` /
+  `action_new` triggeren nu meteen een full snapshot zodat fire-buttons
+  niet leeg blijven tot de operator een cue mutereert.
+- **Cue.from_dict unknown keys** — eenmalig per session gelogd zodat
+  toekomstige format-velden niet stilletjes verloren gaan bij open+save.
+- **Trigger_osc dedup** — één OSC-message vuurt nu één cue (eerste
+  match), niet meer alle cues die dezelfde trigger hebben.
+- **AUTO_CONTINUE recursion cap** — depth 50, daarna defer via
+  QTimer.singleShot zodat license-blocked chains de stack niet meer
+  overflowen.
+- **`select_cue` idempotency** — voorkomt inspector-rebuild signal-storm
+  op elke GO als de cue al geselecteerd is.
+
 ## [0.5.2] — 2026-04-30
 
 Stabiliteits-laag — eerste stap naar v1.0. Onverwachte exceptions
