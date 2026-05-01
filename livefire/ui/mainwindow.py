@@ -382,24 +382,30 @@ class MainWindow(QMainWindow):
         self._add_action(m_tr, "Stop All", self.action_stop_all, QKeySequence("Escape"),
                          tip="Stop all active cues immediately (panic)")
 
-        # View — currently houses the theme picker; future: cuelist
-        # display options, font size, etc.
+        # View — theme + per-theme layout variant picker.
         m_view = mb.addMenu("&View")
         m_view.setToolTipsVisible(True)
         m_theme = m_view.addMenu("Theme")
-        from .style import THEMES
+        from .style import THEMES, LAYOUT_VARIANTS
         from PyQt6.QtGui import QActionGroup
         self._theme_group = QActionGroup(self)
         self._theme_group.setExclusive(True)
         current_theme = QSettings().value("ui/theme", "default", type=str)
+        current_variant = QSettings().value("ui/layout", "a", type=str)
         for theme_id, info in THEMES.items():
-            act = m_theme.addAction(info["label"])
-            act.setCheckable(True)
-            act.setChecked(theme_id == current_theme)
-            act.triggered.connect(
-                lambda _checked=False, t=theme_id: self._apply_theme(t)
-            )
-            self._theme_group.addAction(act)
+            # Elk thema krijgt 'n eigen submenu met z'n variants.
+            sub = m_theme.addMenu(info["label"])
+            for variant_id, variant_label in LAYOUT_VARIANTS.get(theme_id, [("a", "A — Default")]):
+                act = sub.addAction(variant_label)
+                act.setCheckable(True)
+                act.setChecked(
+                    theme_id == current_theme and variant_id == current_variant
+                )
+                act.triggered.connect(
+                    lambda _checked=False, t=theme_id, v=variant_id:
+                        self._apply_theme(t, v)
+                )
+                self._theme_group.addAction(act)
 
         # Help
         m_help = mb.addMenu("&Help")
@@ -1177,10 +1183,10 @@ class MainWindow(QMainWindow):
 
     # ---- theme picker -----------------------------------------------------
 
-    def _apply_theme(self, theme_id: str) -> None:
-        """Switch de QApplication-stylesheet naar 't gekozen theme en
-        bewaar de keuze in QSettings. Live preview — geen restart nodig
-        voor de meeste UI-elementen."""
+    def _apply_theme(self, theme_id: str, variant_id: str = "a") -> None:
+        """Switch theme + layout-variant. Stylesheet (kleuren) wisselt
+        live; layout-variant wordt pas na restart actief omdat de
+        TransportWidget z'n layout bij constructie vastlegt."""
         from .style import build_stylesheet
         from PyQt6.QtWidgets import QApplication
         app = QApplication.instance()
@@ -1188,12 +1194,11 @@ class MainWindow(QMainWindow):
             return
         app.setStyleSheet(build_stylesheet(theme_id))
         QSettings().setValue("ui/theme", theme_id)
-        # Sommige UI-elementen (cuelist delegate-overlay, transport-icons)
-        # cachen kleuren bij module-import. Een statusbar-message vertelt
-        # de operator dat 'n restart de laatste polish brengt.
+        QSettings().setValue("ui/layout", variant_id)
         self.statusBar().showMessage(
-            f"Theme: {theme_id} — restart liveFire voor volledige werking",
-            4000,
+            f"Theme: {theme_id}/{variant_id.upper()} — restart liveFire "
+            f"voor de layout-wissel",
+            5000,
         )
 
     # ---- showtime-lock ----------------------------------------------------

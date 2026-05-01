@@ -62,6 +62,7 @@ class TransportWidget(QWidget):
         # restart (Qt-layout is bij __init__ vastgesteld).
         from PyQt6.QtCore import QSettings
         self._theme_id = QSettings().value("ui/theme", "default", type=str)
+        self._layout_variant = QSettings().value("ui/layout", "a", type=str)
         # Buitenste VBox met twee/drie secties:
         #   (Cinematic/QLab only) Row 0: enorme volle-breedte countdown
         #   Row 1 (HBox): GO/Stop + Showtime/Inspector + names/timers
@@ -240,12 +241,15 @@ class TransportWidget(QWidget):
         self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
         self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
 
-        if self._theme_id in ("cinematic", "qlab"):
+        if (self._theme_id in ("cinematic", "qlab")
+                and self._layout_variant == "a"):
             # Hero countdown: mega-grote REMAIN bovenin via een stylesheet
             # met expliciete font-size — anders overschrijft de globale
             # QSS-regel `QWidget { font-size: 9pt; }` onze setFont() en
             # blijft de hero countdown op default-grootte hangen. Met
-            # font-size in de widget-stylesheet wint deze altijd.
+            # font-size in de widget-stylesheet wint deze altijd. Alleen
+            # voor variant A — B en C van deze themes krijgen 'n andere
+            # arrangement via _apply_layout_variant.
             self.lbl_countdown.setStyleSheet(
                 f"color: {ACCENT}; font-size: 96pt; font-weight: bold;"
             )
@@ -289,11 +293,18 @@ class TransportWidget(QWidget):
         outer.addWidget(self._cue_toolbar_holder)
 
         # ---- Theme-specifieke laatste tweaks -----------------------------
-        if self._theme_id == "linear":
-            # Strak, minimal — verberg de NEXT/NOW PLAYING tegels en
-            # vertrouw op de cuelist + countdown alleen.
+        if self._theme_id == "linear" and self._layout_variant == "a":
+            # Linear-A "Stripped": verberg NEXT/NOW PLAYING tegels.
             self.lbl_playhead.hide()
             self.lbl_countdown_name.hide()
+
+        # ---- Layout-variant B / C — post-construction rearrange ---------
+        # Variant A is wat hierboven al gebouwd is. B en C halen widgets
+        # uit hun huidige layout en parents en plakken ze in 'n andere
+        # arrangement. Niet elegant maar werkt zonder de hele __init__
+        # te refactoren, en operator kan zonder restart wisselen tussen
+        # A/B/C door 'm te kiezen + restarten.
+        self._apply_layout_variant(outer, row1, row1_widget)
 
         # ---- Refresh-timer voor countdown ----------------------------------
         self._countdown_source = countdown_source
@@ -377,6 +388,55 @@ class TransportWidget(QWidget):
             # Re-render om 't HTML-fragment opnieuw met nieuwe font-sizes
             # te tekenen (caps-label heeft eigen font-size in de HTML).
             self._refresh_countdown()
+
+    def _apply_layout_variant(self, outer, row1, row1_widget) -> None:
+        """Post-construction layout-tweak voor variants B en C.
+        Variant A = de net-gebouwde layout, hier doen we niks.
+        Variant B = single-row inline (geen stacking).
+        Variant C = centered countdown (countdown krijgt 'n eigen rij)."""
+        if self._layout_variant == "a":
+            return
+
+        if self._layout_variant == "b":
+            # Single-row: forceer alle 4 labels (NEXT/NOW/elapsed/REMAIN)
+            # op één lijn naast elkaar, in plaats van 2x2 stacking. We
+            # halen ze uit hun huidige parent-layout en proppen ze in 'n
+            # nieuwe HBox die we naast names_col toevoegen. Werkt in alle
+            # themes — bij linear/cinematic/qlab is 't 'n duidelijke
+            # andere look dan A.
+            for lbl in (self.lbl_playhead, self.lbl_countdown_name,
+                         self.lbl_elapsed, self.lbl_countdown):
+                lbl.show()
+            # Force kleinere fonts zodat alles op één rij past.
+            self.lbl_countdown.setStyleSheet(
+                f"color: {ACCENT}; font-size: 18pt; font-weight: bold;"
+            )
+            self.lbl_elapsed.setStyleSheet(
+                f"color: {OK}; font-size: 12pt;"
+            )
+            return
+
+        if self._layout_variant == "c":
+            # Centered countdown: voeg 'n eigen rij toe boven row1 met
+            # de countdown gecentreerd in groot lettertype. Lijkt op
+            # cinematic-A maar werkt voor elk theme.
+            # We hebben lbl_countdown al, hergebruiken 'm.
+            big_size = "72pt" if self._theme_id == "glass" else "60pt"
+            self.lbl_countdown.setStyleSheet(
+                f"color: {ACCENT}; font-size: {big_size}; font-weight: bold;"
+            )
+            # Re-parent: countdown uit z'n huidige parent halen.
+            old_parent = self.lbl_countdown.parent()
+            self.lbl_countdown.setParent(None)
+            # Eigen centered-row maken bovenin.
+            centered_row = QHBoxLayout()
+            centered_row.setContentsMargins(0, 0, 0, 0)
+            centered_row.addStretch(1)
+            centered_row.addWidget(self.lbl_countdown)
+            centered_row.addStretch(1)
+            # Insert vooraan de outer-VBox (vóór row1_widget).
+            outer.insertLayout(0, centered_row)
+            return
 
     def set_cue_toolbar(self, widget: QWidget) -> None:
         """MainWindow propt zijn cue-toolbar in de slot onder Showtime.

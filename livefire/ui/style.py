@@ -213,6 +213,45 @@ THEMES: dict[str, dict] = {
 }
 
 
+# Per-theme layout-varianten. Een variant beschrijft de structurele
+# rangschikking van GO/Stop/Showtime/Names/Timers in de transport-bar.
+# TransportWidget leest theme + variant uit QSettings en construeert
+# de bijpassende layout. Zie transport.py voor de daadwerkelijke
+# implementaties.
+LAYOUT_VARIANTS: dict[str, list[tuple[str, str]]] = {
+    "default": [
+        ("a", "A — Compact (default)"),
+        ("b", "B — Single row"),
+        ("c", "C — Centered timer"),
+    ],
+    "studio": [
+        ("a", "A — Beveled frame"),
+        ("b", "B — Dashboard split"),
+        ("c", "C — Console row"),
+    ],
+    "linear": [
+        ("a", "A — Stripped (default)"),
+        ("b", "B — Inline minimal"),
+        ("c", "C — Card centered"),
+    ],
+    "qlab": [
+        ("a", "A — Hero countdown"),
+        ("b", "B — Sidebar timer"),
+        ("c", "C — Strip"),
+    ],
+    "cinematic": [
+        ("a", "A — Hero countdown"),
+        ("b", "B — Two-tier (big now-playing)"),
+        ("c", "C — Theatre poster"),
+    ],
+    "glass": [
+        ("a", "A — Card cluster (default)"),
+        ("b", "B — Bento grid"),
+        ("c", "C — Centered timer"),
+    ],
+}
+
+
 def build_stylesheet(theme_id: str = "default") -> str:
     """Genereer de stylesheet voor de gegeven theme. Moet ná
     QApplication()-init worden aangeroepen omdat QPixmap een GUI-context
