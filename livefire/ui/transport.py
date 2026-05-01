@@ -56,18 +56,33 @@ class TransportWidget(QWidget):
         elapsed_source: ElapsedSource | None = None,
     ):
         super().__init__(parent)
-        # Buitenste VBox met twee secties:
-        #   Row 1 (HBox): GO/Stop (dubbel hoog) + Showtime + Inspector-
-        #                 toggle + sep + labels + countdown + name
+        # Theme-aware layout. Bij constructie lezen we 't actieve theme
+        # uit QSettings zodat de transport-widget zich anders kan
+        # opbouwen per theme. Switching at runtime requires een
+        # restart (Qt-layout is bij __init__ vastgesteld).
+        from PyQt6.QtCore import QSettings
+        self._theme_id = QSettings().value("ui/theme", "default", type=str)
+        # Buitenste VBox met twee/drie secties:
+        #   (Cinematic/QLab only) Row 0: enorme volle-breedte countdown
+        #   Row 1 (HBox): GO/Stop + Showtime/Inspector + names/timers
         #   Row 2 (HBox): cue-toolbar over de volle breedte
-        # Deze structuur laat de transport groeien zodra de toolbar
-        # wrapt — geen Grid-row-height-magie nodig.
         self.setSizePolicy(
             QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum,
         )
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(6, 6, 6, 6)
-        outer.setSpacing(4)
+        # Padding per theme: Glass + Cinematic willen meer ademruimte.
+        if self._theme_id == "glass":
+            outer.setContentsMargins(14, 14, 14, 14)
+            outer.setSpacing(10)
+        elif self._theme_id == "cinematic":
+            outer.setContentsMargins(10, 14, 10, 10)
+            outer.setSpacing(8)
+        elif self._theme_id == "linear":
+            outer.setContentsMargins(8, 4, 8, 4)
+            outer.setSpacing(2)
+        else:
+            outer.setContentsMargins(6, 6, 6, 6)
+            outer.setSpacing(4)
 
         # ---- ROW 1 — transport-balk (alle controls + countdown) --------
         # Wrap in 'n widget met max-height = GO/Stop hoogte (80) zodat de
@@ -197,28 +212,17 @@ class TransportWidget(QWidget):
         sep_next_now.setFrameShadow(QFrame.Shadow.Sunken)
         row1.addWidget(sep_next_now)
 
-        # ---- RECHTER kolom: ELAPSED (boven) + REMAIN (onder) ----------
-        # Monospace zodat digits niet schokken op elke tick.
+        # ---- TIMERS — placement is theme-dependent --------------------
+        # Cinematic/QLab krijgen een gigantische REMAIN in een eigen rij
+        # boven row1. Andere themes houden 't compact: ELAPSED + REMAIN
+        # stacked in de rechter-kolom van row1.
         self._timer_font_pt = 40  # base; resizeEvent past 'm aan
         self._timer_font = QFont("Consolas")
         self._timer_font.setPointSize(self._timer_font_pt)
         self._timer_font.setBold(True)
 
-        timers_col = QVBoxLayout()
-        timers_col.setContentsMargins(0, 0, 0, 0)
-        timers_col.setSpacing(2)
-
         TIMER_MIN_W = 140
-        self.lbl_elapsed = QLabel("—:—")
-        self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_elapsed.setFont(self._timer_font)
-        self.lbl_elapsed.setStyleSheet(f"color: {OK};")
-        self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
-        self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
-        timers_col.addWidget(self.lbl_elapsed)
-
-        # Backwards-compat alias zodat bestaande code (autosave etc.) die
-        # 'lbl_countdown' aanroept blijft werken — 't is nu de REMAIN-tile.
+        # REMAIN — backwards-compat alias 'lbl_countdown'.
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_countdown.setFont(self._timer_font)
@@ -228,11 +232,43 @@ class TransportWidget(QWidget):
             "loop it counts up (prefix +)."
         )
         self.lbl_countdown.setMinimumWidth(TIMER_MIN_W)
-        timers_col.addWidget(self.lbl_countdown)
+        # ELAPSED — kleinere caption.
+        self.lbl_elapsed = QLabel("—:—")
+        self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.lbl_elapsed.setFont(self._timer_font)
+        self.lbl_elapsed.setStyleSheet(f"color: {OK};")
+        self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
+        self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
 
-        row1.addLayout(timers_col, 1)
-
-        outer.addWidget(row1_widget)
+        if self._theme_id in ("cinematic", "qlab"):
+            # Hero countdown: mega-grote REMAIN bovenin, ELAPSED klein
+            # eronder maar in de hero-row, niet in row1.
+            self._timer_font.setPointSize(80)
+            self.lbl_countdown.setFont(self._timer_font)
+            hero = QVBoxLayout()
+            hero.setContentsMargins(0, 0, 0, 0)
+            hero.setSpacing(0)
+            hero.addWidget(self.lbl_countdown)
+            # ELAPSED klein onder REMAIN — Cinematic/QLab look.
+            small = QFont("Consolas")
+            small.setPointSize(11)
+            self.lbl_elapsed.setFont(small)
+            hero.addWidget(self.lbl_elapsed)
+            outer.addLayout(hero)
+            outer.addWidget(row1_widget)
+            # In row1's rechter-kolom blijft 't leeg voor deze themes —
+            # niets toevoegen, GO/Stop/names claimen alle ruimte.
+            row1.addStretch(1)
+        else:
+            # Default / Studio / Linear / Glass: ELAPSED + REMAIN stacked
+            # in row1's rechter-kolom.
+            timers_col = QVBoxLayout()
+            timers_col.setContentsMargins(0, 0, 0, 0)
+            timers_col.setSpacing(2)
+            timers_col.addWidget(self.lbl_elapsed)
+            timers_col.addWidget(self.lbl_countdown)
+            row1.addLayout(timers_col, 1)
+            outer.addWidget(row1_widget)
 
         # ---- ROW 2 — cue-toolbar over volle breedte --------------------
         # MainWindow injecteert de eigenlijke widget via set_cue_toolbar();
@@ -247,6 +283,13 @@ class TransportWidget(QWidget):
         self._cue_toolbar_lay.setContentsMargins(0, 0, 0, 0)
         self._cue_toolbar_lay.setSpacing(2)
         outer.addWidget(self._cue_toolbar_holder)
+
+        # ---- Theme-specifieke laatste tweaks -----------------------------
+        if self._theme_id == "linear":
+            # Strak, minimal — verberg de NEXT/NOW PLAYING tegels en
+            # vertrouw op de cuelist + countdown alleen.
+            self.lbl_playhead.hide()
+            self.lbl_countdown_name.hide()
 
         # ---- Refresh-timer voor countdown ----------------------------------
         self._countdown_source = countdown_source
@@ -311,15 +354,19 @@ class TransportWidget(QWidget):
             t = max(0.0, min(1.0, t))
             return int(round(value_min + t * (value_max - value_min)))
 
-        # Stacked timers in 'n 80-px rij (= GO/Stop hoogte). Elk timer-
-        # label heeft ~38 px verticaal beschikbaar, dus 22..32 pt is 't
-        # praktische bereik voor Consolas Bold. Boven 32 pt rendert 't
-        # buiten de row.
-        timer_pt = _scale(22, 32)
+        # Cinematic/QLab krijgen een veel grotere countdown-range omdat
+        # ze een dedicated hero-row hebben. Andere themes blijven compact.
+        if self._theme_id in ("cinematic", "qlab"):
+            timer_pt = _scale(48, 100)
+        else:
+            # Stacked timers in 'n 80-px rij; 22..32 pt is praktisch.
+            timer_pt = _scale(22, 32)
         if timer_pt != self._timer_font_pt:
             self._timer_font_pt = timer_pt
             self._timer_font.setPointSize(timer_pt)
-            self.lbl_elapsed.setFont(self._timer_font)
+            # ELAPSED schaalt niet voor cinematic/qlab — die heeft eigen 11pt.
+            if self._theme_id not in ("cinematic", "qlab"):
+                self.lbl_elapsed.setFont(self._timer_font)
             self.lbl_countdown.setFont(self._timer_font)
         info_pt = _scale(9, 13)
         if info_pt != self._info_font_pt:
