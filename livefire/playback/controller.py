@@ -113,6 +113,10 @@ class PlaybackController(QObject):
         # doorzetten zodra een child klaar is.
         self._group_chain: dict[str, list[Cue]] = {}
         self._group_chain_owner: dict[str, str] = {}
+        # Recursie-diepte teller voor AUTO_CONTINUE-ketens (zie
+        # _advance_and_go). Wordt opgehoogd binnen _advance_and_go en
+        # gedecrementeerd in z'n finally.
+        self._auto_continue_depth: int = 0
 
         self._timer = QTimer(self)
         self._timer.setInterval(TICK_MS)
@@ -261,9 +265,14 @@ class PlaybackController(QObject):
         """
         if address.startswith("/livefire/"):
             self._handle_livefire_command(address, args)
+        # Eén OSC-message → één cue. Bij gedupliceerde trigger_osc's (vaak
+        # een copy-paste-fout) zou anders elke duplicate-cue tegelijk
+        # vuren — meestal niet wat de operator bedoelde. Eerste match wint;
+        # we nemen 'm in cuelist-volgorde.
         for cue in self.workspace.cues:
             if cue.trigger_osc and cue.trigger_osc == address:
                 self.fire_cue(cue.id)
+                break
 
     def _handle_livefire_command(self, address: str, args: tuple) -> None:
         """Router voor de Companion/integratie-API. Onbekende addresses
@@ -567,6 +576,14 @@ class PlaybackController(QObject):
         if cue.continue_mode == ContinueMode.AUTO_CONTINUE and not r.in_group_chain:
             self._advance_and_go()
 
+    # Maximum recursie-diepte voor AUTO_CONTINUE-ketens binnen één
+    # synchrone _start_cue/_begin_action/_advance_and_go-cyclus. Pre-
+    # wait=0 + AUTO_CONTINUE recurseert synchroon; bij license-blocked
+    # cues of 0-duration cues kan een lange keten anders boven Python's
+    # default 1000-recursie-limit uitkomen. Boven deze drempel breken
+    # we 'm via QTimer.singleShot zodat de event-loop ertussen ademt.
+    _AUTO_CONTINUE_RECURSION_CAP = 50
+
     def _advance_and_go(self) -> None:
         """Start de volgende cue in de lijst (voor auto-continue/auto-follow)."""
         if self._playhead_index >= len(self.workspace.cues):
@@ -576,7 +593,18 @@ class PlaybackController(QObject):
         # Sync UI — zelfde reden als go(): zonder emit blijft de oranje
         # highlight op de vorige rij staan tijdens AUTO_CONTINUE/AUTO_FOLLOW.
         self.playhead_changed.emit(self._playhead_index)
-        self._start_cue(nxt)
+        self._auto_continue_depth += 1
+        try:
+            if self._auto_continue_depth > self._AUTO_CONTINUE_RECURSION_CAP:
+                # Te diep — defer 't naar de volgende event-loop tick zodat
+                # we de Python-call-stack legen en de UI blijft reageren.
+                from PyQt6.QtCore import QTimer
+                cue_to_start = nxt
+                QTimer.singleShot(0, lambda c=cue_to_start: self._start_cue(c))
+                return
+            self._start_cue(nxt)
+        finally:
+            self._auto_continue_depth -= 1
 
     # ---- group-cue afhandeling --------------------------------------------
 

@@ -363,6 +363,16 @@ class CueListWidget(QTreeWidget):
         color = STATE_COLORS.get(cue.state, QColor("#888"))
         item.setForeground(5, QBrush(color))
 
+    def set_readonly(self, on: bool) -> None:
+        """Visueel + functioneel readonly maken tijdens showtime-lock.
+        Drag-reorder gaat uit, drops worden geweigerd, en mousePressEvent
+        opent geen Continue-combo meer. _destructive_blocked() in
+        MainWindow vangt alle resterende muterende paden af; deze methode
+        zorgt voor de bijpassende UI-feedback."""
+        self._readonly = on
+        self.setDragEnabled(not on)
+        self.setAcceptDrops(not on)
+
     def update_cue_display(self, cue_id: str) -> None:
         """Update álle zichtbare kolommen van één cue zonder clear/rebuild.
         Gebruikt door de inspector zodat keyboard-focus op spinboxen niet
@@ -423,6 +433,13 @@ class CueListWidget(QTreeWidget):
     def select_cue(self, cue_id: str) -> None:
         item = self._id_to_item.get(cue_id)
         if item is None:
+            return
+        # Idempotency: als deze cue al de enige geselecteerde is,
+        # niet opnieuw selecteren — anders triggert clearSelection +
+        # setSelected een cue_selected-signal-storm die de inspector
+        # onnodig rebuildt op elke GO bij grote workspaces.
+        sel = self.selectedItems()
+        if len(sel) == 1 and sel[0] is item and self.currentItem() is item:
             return
         # ExtendedSelection: setCurrentItem alléén zet 'm niet als
         # geselecteerd. Voor keyboard-navigatie en ons playhead-from-
@@ -605,8 +622,11 @@ class CueListWidget(QTreeWidget):
         # Eerst de standaard selectie/playhead-routine. Daarna, als de
         # klik binnen de Continue-kolom valt, openen we expliciet de
         # editor (dropdown). EditTriggers staat globaal op NoEdit, dus
-        # andere kolommen blijven niet-editable.
+        # andere kolommen blijven niet-editable. In readonly-staat
+        # (showtime-lock) skippen we 't editor-openen.
         super().mousePressEvent(e)
+        if getattr(self, "_readonly", False):
+            return
         idx = self.indexAt(e.position().toPoint())
         if idx.isValid() and idx.column() == _COL_CONTINUE:
             self.edit(idx)

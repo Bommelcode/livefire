@@ -191,7 +191,29 @@ class Cue:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Cue":
-        # Filter onbekende sleutels zodat oudere/andere versies niet crashen
+        # Filter onbekende sleutels zodat oudere/andere versies niet crashen.
+        # Voor forward-compat ook niet hard-fouten, maar wél eenmalig per
+        # session loggen welke onbekende keys gedropt zijn — anders raakt
+        # 'n future-format-veld silent kwijt zodra de operator opent +
+        # opslaat. De eerste keer dat een onbekende key voorkomt komt 'ie
+        # in stderr, daarna stil.
         known = {f.name for f in cls.__dataclass_fields__.values()}  # type: ignore[attr-defined]
+        unknown = [k for k in d.keys() if k not in known]
+        if unknown:
+            global _logged_unknown_keys
+            new = [k for k in unknown if k not in _logged_unknown_keys]
+            if new:
+                import sys
+                _logged_unknown_keys.update(new)
+                sys.stderr.write(
+                    f"[livefire] Cue.from_dict: dropping unknown keys "
+                    f"{sorted(new)} (workspace from a newer build?)\n"
+                )
         clean = {k: v for k, v in d.items() if k in known}
         return cls(**clean)
+
+
+# Module-level set zodat we per app-run niet bij iedere cue dezelfde
+# warning herhalen — alleen de eerste keer dat een nieuw onbekend veld
+# voorbijkomt.
+_logged_unknown_keys: set[str] = set()

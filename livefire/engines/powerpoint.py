@@ -345,6 +345,7 @@ def extract_slide_media(
         with zipfile.ZipFile(file_path, "r") as zf:
             namelist = set(zf.namelist())
             extracted: dict[str, str] = {}  # zip-pad → uitgepakt-pad
+            used_dests: set[Path] = set()  # voor basename-collision dedup
 
             for name in sorted(namelist):
                 m = _RELS_NAME_RE.match(name)
@@ -401,7 +402,21 @@ def extract_slide_media(
                             media_dir.mkdir(parents=True, exist_ok=True)
                         except OSError:
                             continue
-                        dest = media_dir / Path(target_path).name
+                        # Disambig: twee verschillende ZIP-paden kunnen
+                        # dezelfde basename hebben (bv. ppt/embeddings/
+                        # audio1.mp3 + ppt/media/audio1.mp3). Anders
+                        # overschrijft de tweede de eerste op disk en
+                        # spelen beide cues dezelfde verkeerde audio af.
+                        base_name = Path(target_path).name
+                        dest = media_dir / base_name
+                        if dest in used_dests:
+                            stem = Path(base_name).stem
+                            suffix = Path(base_name).suffix
+                            for n in range(1, 10000):
+                                candidate = media_dir / f"{stem}_{n}{suffix}"
+                                if candidate not in used_dests:
+                                    dest = candidate
+                                    break
                         try:
                             with zf.open(target_path) as src, open(dest, "wb") as dst:
                                 shutil.copyfileobj(src, dst)
@@ -409,6 +424,7 @@ def extract_slide_media(
                             continue
                         out_path = str(dest)
                         extracted[target_path] = out_path
+                        used_dests.add(dest)
 
                     meta = timing_meta.get(rid, {})
                     result.setdefault(slide_num, []).append(SlideMedia(

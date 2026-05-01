@@ -1367,6 +1367,15 @@ class MainWindow(QMainWindow):
             self.autosave.stop()
         self.feedback.shutdown()
         self.controller.shutdown()
+        # Inspector heeft 'n eigen libVLC-instance via VideoPreviewWidget;
+        # die parent-cleanup van Qt kent niet de externe libVLC-resources.
+        # Expliciete shutdown anders accumuleren libVLC-instances bij
+        # elke session (zichtbaar in pytest of bij quick-restart-loops).
+        if hasattr(self, "inspector") and hasattr(self.inspector, "video_preview"):
+            try:
+                self.inspector.video_preview.shutdown()
+            except Exception:
+                pass
         super().closeEvent(e)
 
     # ---- window geometry persistence -------------------------------------

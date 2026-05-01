@@ -91,9 +91,15 @@ class AudioSource:
         self._channels = samples.shape[1]
         self._total_frames = samples.shape[0]
 
-        # Start-offset: skip naar positie
-        self._pos = int(start_offset_s * sample_rate)
-        self._pos = max(0, min(self._pos, self._total_frames))
+        # Start-offset: skip naar positie. We bewaren 'm ook expliciet
+        # zodat 't loop-pad eronder weet waar 'ie naar terug moet seeken
+        # (vroeger seek'de 'ie altijd naar 0, waardoor 'n trim-in cue z'n
+        # in-point op elke loop-iteratie verloor).
+        self._start_offset_frames = max(0, int(start_offset_s * sample_rate))
+        self._start_offset_frames = min(
+            self._start_offset_frames, self._total_frames,
+        )
+        self._pos = self._start_offset_frames
 
         # End-offset: effectief einde (aantal frames vanaf begin)
         end_trim = int(end_offset_s * sample_rate)
@@ -139,7 +145,8 @@ class AudioSource:
         if self._loops_total == 0:  # oneindig
             return -1.0
         remaining_loops = max(0, self._loops_total - self._loops_done - 1)
-        full_loop_frames = max(0, self._effective_end)
+        # Een volledige loop loopt van start_offset tot effective_end.
+        full_loop_frames = max(0, self._effective_end - self._start_offset_frames)
         total_frames = this_loop_frames + remaining_loops * full_loop_frames
         return total_frames / self._sr
 
@@ -183,12 +190,9 @@ class AudioSource:
                 # Einde bereikt: loop of stop
                 self._loops_done += 1
                 if self._loops_total == 0 or self._loops_done < self._loops_total:
-                    # Seek terug naar start-offset (niet naar 0, consistent met
-                    # QLab: loopt tussen start- en end-offset)
-                    self._pos = int(0 if self._loops_total > 0 else 0)
-                    # We moeten begin-offset kennen — we slaan het niet apart op,
-                    # dus gebruiken 0 als loop-start. Als er een start_offset was
-                    # speelt die alleen de eerste keer. Afgesproken gedrag.
+                    # Seek terug naar de start-offset (consistent met QLab —
+                    # loop draait tussen start- en end-offset).
+                    self._pos = self._start_offset_frames
                     continue
                 self._finished = True
                 break
@@ -343,6 +347,12 @@ class AudioEngine:
         if sample_rate is not None and sample_rate != self.sample_rate:
             with self._decoded_lock:
                 self._decoded_cache.clear()
+                # In-flight preload-workers gebruiken de OUDE samplerate
+                # voor hun resample. Markeer ze als 'niet-bezig' zodat
+                # een eventuele nieuwe preload-aanroep ze opnieuw queued —
+                # de oude worker mag z'n resultaat niet meer in de cache
+                # zetten (zie _worker in preload()), dus we vergeten 'm.
+                self._preload_in_flight.clear()
             self.sample_rate = sample_rate
         if not was_started:
             return True, ""
@@ -395,12 +405,20 @@ class AudioEngine:
                 return
             self._preload_in_flight.add(key)
 
+        # Snapshot van de samplerate voor decode. Als 't engine-rate hierna
+        # verandert (set_device), discarden we 't resultaat — anders zit
+        # er resampled-op-de-oude-rate audio in de cache, wat een speel-
+        # off-pitch geeft op de eerste fire na de device-wissel.
+        expected_sr = self.sample_rate
+
         def _worker() -> None:
             try:
                 result = self._decode(path)
                 if result is not None:
                     with self._decoded_lock:
-                        self._decoded_cache[key] = result
+                        # Skip als samplerate intussen veranderd is.
+                        if self.sample_rate == expected_sr:
+                            self._decoded_cache[key] = result
             finally:
                 with self._decoded_lock:
                     self._preload_in_flight.discard(key)
