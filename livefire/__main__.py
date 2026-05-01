@@ -107,7 +107,9 @@ def main() -> int:
 
     if _ICON_PATH.is_file():
         app.setWindowIcon(QIcon(str(_ICON_PATH)))
-    app.setStyleSheet(build_stylesheet())
+    # Theme-keuze persistent in QSettings; default = de oude liveFire-look.
+    theme_id = QSettings().value("ui/theme", "default", type=str)
+    app.setStyleSheet(build_stylesheet(theme_id))
 
     # Single-instance gate. Twee instances tegelijk botsen op de OSC-
     # input UDP-poort, het audio-device en het Companion-feedback-pad —

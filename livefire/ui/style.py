@@ -79,26 +79,164 @@ def _make_arrow_pixmap(direction: str, color: str = TEXT) -> str:
     return str(out).replace("\\", "/")
 
 
-def build_stylesheet() -> str:
-    """Genereer de stylesheet. Moet ná QApplication()-init worden aangeroepen
-    omdat QPixmap een GUI-context nodig heeft voor arrow-icons."""
-    arrow_up = _make_arrow_pixmap("up")
-    arrow_down = _make_arrow_pixmap("down")
-    return _STYLESHEET_TEMPLATE.format(
-        BG_DARK=BG_DARK, BG_MID=BG_MID, BG_LIGHT=BG_LIGHT,
-        TEXT=TEXT, TEXT_DIM=TEXT_DIM, ACCENT=ACCENT, ACCENT_ALT=ACCENT_ALT,
-        OK=OK, ERR=ERR, SEL_BG=SEL_BG, BORDER=BORDER,
+# ---- themes ----------------------------------------------------------------
+#
+# Elke theme is 'n palette + font-family + extra CSS-regels. De default-
+# theme is wat module-level constants ook hebben (zodat consumers die
+# `from .style import ACCENT` doen blijven werken). Andere themes
+# wisselen alleen de QApplication-stylesheet — kleine details die
+# hardcoded zijn op de default-constants overleven 'n theme-wissel
+# tot de volgende app-start.
+#
+THEMES: dict[str, dict] = {
+    "default": {
+        "label": "liveFire (Default)",
+        "font": '"Segoe UI", "Segoe UI Variable", "Tahoma", sans-serif',
+        "palette": {
+            "BG_DARK": "#1e1e1e", "BG_MID": "#2a2a2a", "BG_LIGHT": "#333333",
+            "TEXT": "#e0e0e0", "TEXT_DIM": "#9a9a9a",
+            "ACCENT": "#3aa2e6", "ACCENT_ALT": "#e6a23a",
+            "OK": "#5cb85c", "ERR": "#d9534f",
+            "SEL_BG": "#0d4c74", "BORDER": "#3a3a3a",
+        },
+        "extra": "",
+    },
+    "studio": {
+        "label": "Studio Console (broadcast amber)",
+        "font": '"Segoe UI", "Tahoma", sans-serif',
+        "palette": {
+            "BG_DARK": "#1a1d21", "BG_MID": "#22262b", "BG_LIGHT": "#2c3138",
+            "TEXT": "#e6e6e6", "TEXT_DIM": "#7a8089",
+            "ACCENT": "#f5a623", "ACCENT_ALT": "#39d353",
+            "OK": "#39d353", "ERR": "#e74c3c",
+            "SEL_BG": "#5a3d10", "BORDER": "#3d4248",
+        },
+        "extra": """
+            QPushButton#goButton, QPushButton#stopButton {
+                border: 2px solid #3d4248;
+                border-radius: 2px;
+                font-weight: bold;
+            }
+            QPushButton { border-radius: 2px; }
+        """,
+    },
+    "linear": {
+        "label": "Linear Modern (minimal violet)",
+        "font": '"Inter", "Segoe UI", sans-serif',
+        "palette": {
+            "BG_DARK": "#0a0a0a", "BG_MID": "#161616", "BG_LIGHT": "#1f1f1f",
+            "TEXT": "#e8e8e8", "TEXT_DIM": "#6a6a6a",
+            "ACCENT": "#5e6ad2", "ACCENT_ALT": "#b8b8b8",
+            "OK": "#5e6ad2", "ERR": "#eb5757",
+            "SEL_BG": "#22243b", "BORDER": "#1f1f1f",
+        },
+        "extra": """
+            QPushButton {
+                border-radius: 6px;
+                padding: 6px 12px;
+                background: transparent;
+                border: 1px solid #1f1f1f;
+            }
+            QPushButton:hover { background: #161616; }
+            QGroupBox { border: 1px solid #1f1f1f; border-radius: 8px; }
+            QTreeWidget { border: none; alternate-background-color: #0d0d0d; }
+        """,
+    },
+    "qlab": {
+        "label": "QLab Native (familiar orange)",
+        "font": '"Segoe UI", "SF Pro Display", "Tahoma", sans-serif',
+        "palette": {
+            "BG_DARK": "#1e1e22", "BG_MID": "#27272d", "BG_LIGHT": "#32323a",
+            "TEXT": "#f0f0f0", "TEXT_DIM": "#909096",
+            "ACCENT": "#ff8c00", "ACCENT_ALT": "#ffaa3d",
+            "OK": "#4cd964", "ERR": "#ff453a",
+            "SEL_BG": "#7a3d00", "BORDER": "#3d3d44",
+        },
+        "extra": """
+            QPushButton { border-radius: 5px; }
+            QTreeWidget::item { border-bottom: 1px solid #2a2a30; }
+        """,
+    },
+    "cinematic": {
+        "label": "Cinematic (deep purple + gold)",
+        "font": '"Segoe UI", "DM Sans", "Tahoma", sans-serif',
+        "palette": {
+            "BG_DARK": "#0d0a14", "BG_MID": "#1a1424", "BG_LIGHT": "#251c33",
+            "TEXT": "#f0e8d8", "TEXT_DIM": "#8a7a98",
+            "ACCENT": "#d4af37", "ACCENT_ALT": "#b87333",
+            "OK": "#5cb85c", "ERR": "#c0392b",
+            "SEL_BG": "#3d2855", "BORDER": "#2a1f3a",
+        },
+        "extra": """
+            QPushButton {
+                border-radius: 4px;
+                font-weight: 600;
+            }
+            QPushButton#goButton {
+                border: 2px solid #d4af37;
+            }
+            QGroupBox::title { color: #d4af37; }
+        """,
+    },
+    "glass": {
+        "label": "Glassmorphic (cyan glow)",
+        "font": '"Segoe UI", "SF Pro Display", sans-serif',
+        "palette": {
+            "BG_DARK": "#13162e", "BG_MID": "#1a1d3a", "BG_LIGHT": "#252849",
+            "TEXT": "#e6e8f5", "TEXT_DIM": "#7d8197",
+            "ACCENT": "#7df9ff", "ACCENT_ALT": "#a78bfa",
+            "OK": "#4ade80", "ERR": "#f87171",
+            "SEL_BG": "#1f2960", "BORDER": "#2a2e54",
+        },
+        "extra": """
+            QPushButton {
+                border-radius: 12px;
+                padding: 8px 14px;
+                background: rgba(255, 255, 255, 0.04);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid #7df9ff;
+            }
+            QGroupBox {
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 12px;
+                background: rgba(255, 255, 255, 0.02);
+            }
+            QTreeWidget {
+                border: 1px solid rgba(255, 255, 255, 0.06);
+                border-radius: 12px;
+            }
+        """,
+    },
+}
+
+
+def build_stylesheet(theme_id: str = "default") -> str:
+    """Genereer de stylesheet voor de gegeven theme. Moet ná
+    QApplication()-init worden aangeroepen omdat QPixmap een GUI-context
+    nodig heeft voor arrow-icons."""
+    theme = THEMES.get(theme_id) or THEMES["default"]
+    pal = theme["palette"]
+    font = theme["font"]
+    extra = theme["extra"]
+    arrow_up = _make_arrow_pixmap("up", pal["TEXT"])
+    arrow_down = _make_arrow_pixmap("down", pal["TEXT"])
+    base = _STYLESHEET_TEMPLATE.format(
+        FONT_FAMILY=font,
         ARROW_UP=arrow_up, ARROW_DOWN=arrow_down,
+        **pal,
     )
+    return base + "\n" + extra
 
 
 _STYLESHEET_TEMPLATE = """
 QMainWindow, QWidget {{
     background-color: {BG_DARK};
     color: {TEXT};
-    /* Visual Studio-stijl UI-font: Segoe UI 9pt is de Windows-default
-       voor VS 2022 en VS Code. */
-    font-family: "Segoe UI", "Segoe UI Variable", "Tahoma", sans-serif;
+    /* Theme-driven font-family — wisselt mee met de geselecteerde theme. */
+    font-family: {FONT_FAMILY};
     font-size: 9pt;
 }}
 

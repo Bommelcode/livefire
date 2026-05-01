@@ -382,6 +382,25 @@ class MainWindow(QMainWindow):
         self._add_action(m_tr, "Stop All", self.action_stop_all, QKeySequence("Escape"),
                          tip="Stop all active cues immediately (panic)")
 
+        # View — currently houses the theme picker; future: cuelist
+        # display options, font size, etc.
+        m_view = mb.addMenu("&View")
+        m_view.setToolTipsVisible(True)
+        m_theme = m_view.addMenu("Theme")
+        from .style import THEMES
+        from PyQt6.QtGui import QActionGroup
+        self._theme_group = QActionGroup(self)
+        self._theme_group.setExclusive(True)
+        current_theme = QSettings().value("ui/theme", "default", type=str)
+        for theme_id, info in THEMES.items():
+            act = m_theme.addAction(info["label"])
+            act.setCheckable(True)
+            act.setChecked(theme_id == current_theme)
+            act.triggered.connect(
+                lambda _checked=False, t=theme_id: self._apply_theme(t)
+            )
+            self._theme_group.addAction(act)
+
         # Help
         m_help = mb.addMenu("&Help")
         m_help.setToolTipsVisible(True)
@@ -1155,6 +1174,27 @@ class MainWindow(QMainWindow):
             self.status_label.setText("⚠ " + " · ".join(f"{n}: ✗" for n in failed))
         else:
             self.status_label.setText("All engines OK")
+
+    # ---- theme picker -----------------------------------------------------
+
+    def _apply_theme(self, theme_id: str) -> None:
+        """Switch de QApplication-stylesheet naar 't gekozen theme en
+        bewaar de keuze in QSettings. Live preview — geen restart nodig
+        voor de meeste UI-elementen."""
+        from .style import build_stylesheet
+        from PyQt6.QtWidgets import QApplication
+        app = QApplication.instance()
+        if app is None:
+            return
+        app.setStyleSheet(build_stylesheet(theme_id))
+        QSettings().setValue("ui/theme", theme_id)
+        # Sommige UI-elementen (cuelist delegate-overlay, transport-icons)
+        # cachen kleuren bij module-import. Een statusbar-message vertelt
+        # de operator dat 'n restart de laatste polish brengt.
+        self.statusBar().showMessage(
+            f"Theme: {theme_id} — restart liveFire voor volledige werking",
+            4000,
+        )
 
     # ---- showtime-lock ----------------------------------------------------
 
