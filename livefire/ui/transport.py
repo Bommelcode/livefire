@@ -296,9 +296,12 @@ class TransportWidget(QWidget):
         else:
             # Default / Studio / Linear / Glass: ELAPSED + REMAIN stacked
             # in row1's rechter-kolom.
-            timers_col = QVBoxLayout()
+            # ELAPSED + REMAIN naast elkaar — geeft ruimte voor flink
+            # grotere fonts (was 32-56pt stacked → nu 40-72pt naast
+            # elkaar) zonder de transport-rij verticaal te lang te maken.
+            timers_col = QHBoxLayout()
             timers_col.setContentsMargins(0, 0, 0, 0)
-            timers_col.setSpacing(2)
+            timers_col.setSpacing(16)
             timers_col.addWidget(self.lbl_elapsed)
             timers_col.addWidget(self.lbl_countdown)
             row1.addLayout(timers_col, 1)
@@ -399,7 +402,7 @@ class TransportWidget(QWidget):
         # __init__) zodat 'ie niet shrinks op smaller windows. Andere
         # themes scalen 22..32 pt mee met breedte.
         if self._theme_id not in ("cinematic", "qlab"):
-            timer_pt = _scale(32, 56)
+            timer_pt = _scale(40, 72)
             if timer_pt != self._timer_font_pt:
                 self._timer_font_pt = timer_pt
                 self._timer_font.setPointSize(timer_pt)
