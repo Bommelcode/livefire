@@ -170,7 +170,11 @@ class TransportWidget(QWidget):
         self.btn_showtime = QPushButton(" Showtime")
         self.btn_showtime.setObjectName("showtimeButton")
         self.btn_showtime.setCheckable(True)
-        self.btn_showtime.setFixedSize(140, 36)
+        # Hoogte 53 zodat Showtime + Inspector samen ~110 px vullen,
+        # gelijk aan de hoogte van GO/Stop (80) + auto-stop-knop (28)
+        # + 2 px spacing in left_col. Voorheen 36 — kolommen liepen niet
+        # verticaal gelijk.
+        self.btn_showtime.setFixedSize(140, 53)
         showtime_font = QFont()
         showtime_font.setPointSize(10)
         showtime_font.setBold(True)
@@ -200,7 +204,7 @@ class TransportWidget(QWidget):
         self.btn_inspector = QPushButton("Inspector")
         self.btn_inspector.setCheckable(True)
         self.btn_inspector.setChecked(True)  # default zichtbaar
-        self.btn_inspector.setFixedSize(140, 36)
+        self.btn_inspector.setFixedSize(140, 53)
         inspector_font = QFont()
         inspector_font.setPointSize(9)
         self.btn_inspector.setFont(inspector_font)
