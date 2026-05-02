@@ -30,13 +30,32 @@ CountdownSource = Callable[[], "tuple[str, float, bool] | None"]
 ElapsedSource = Callable[[], "float | None"]
 
 
-def _fmt_time(seconds: float) -> str:
-    total = int(max(0, seconds))
-    if total >= 3600:
-        h, rem = divmod(total, 3600)
-        m, s = divmod(rem, 60)
+def _fmt_time(seconds: float, hundredths: bool = True) -> str:
+    """Format als M:SS.cc (default) of M:SS / H:MM:SS afhankelijk van
+    de duur. `hundredths=False` skipt de honderdsten — handig voor
+    formats waar de extra precisie niet thuishoort."""
+    if seconds < 0:
+        seconds = 0
+    if seconds >= 3600:
+        # Bij 1+ uur durende cues skippen we honderdsten — de uren-form
+        # is leesbaarder als HH:MM:SS.
+        h = int(seconds // 3600)
+        rem = seconds - h * 3600
+        m = int(rem // 60)
+        s = int(rem - m * 60)
         return f"{h}:{m:02d}:{s:02d}"
-    m, s = divmod(total, 60)
+    m = int(seconds // 60)
+    s_full = seconds - m * 60
+    if hundredths:
+        s = int(s_full)
+        cc = int(round((s_full - s) * 100))
+        if cc >= 100:  # afrondingsfix
+            cc = 0
+            s += 1
+            if s >= 60:
+                s = 0
+                m += 1
+        return f"{m:02d}:{s:02d}.{cc:02d}"
     return f"{m:02d}:{s:02d}"
 
 
@@ -279,10 +298,10 @@ class TransportWidget(QWidget):
         self._timer_font.setPointSize(self._timer_font_pt)
         self._timer_font.setBold(True)
 
-        # Min-width per timer-label. Bij 72pt Consolas Bold is "00:00"
-        # ~180 px breed; lager dan dit raakt de tekst clipped of de
-        # rechter-label (REMAIN) buiten beeld op smal venster.
-        TIMER_MIN_W = 200
+        # Min-width per timer-label. Bij 72pt Consolas Bold is "00:00.00"
+        # ~290 px breed (8 chars i.p.v. 5); lager dan dit raakt de
+        # honderdsten clipped of de rechter-label (REMAIN) buiten beeld.
+        TIMER_MIN_W = 280
         # REMAIN — backwards-compat alias 'lbl_countdown'.
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -293,6 +312,9 @@ class TransportWidget(QWidget):
             "loop it counts up (prefix +)."
         )
         self.lbl_countdown.setMinimumWidth(TIMER_MIN_W)
+        self.lbl_countdown.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred,
+        )
         # ELAPSED — kleinere caption.
         self.lbl_elapsed = QLabel("—:—")
         self.lbl_elapsed.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -300,6 +322,9 @@ class TransportWidget(QWidget):
         self.lbl_elapsed.setStyleSheet(f"color: {OK};")
         self.lbl_elapsed.setToolTip("Elapsed time of the playing cue")
         self.lbl_elapsed.setMinimumWidth(TIMER_MIN_W)
+        self.lbl_elapsed.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred,
+        )
 
         if (self._theme_id in ("cinematic", "qlab")
                 and self._layout_variant == "a"):
@@ -373,7 +398,10 @@ class TransportWidget(QWidget):
         self._countdown_source = countdown_source
         self._elapsed_source = elapsed_source
         self._cd_timer = QTimer(self)
-        self._cd_timer.setInterval(100)  # 10 Hz is ruim genoeg
+        # 30 Hz update zodat de honderdsten zichtbaar mee-tikken zonder
+        # de show-CPU te belasten. Bij 10 Hz zou 't getal in stappen
+        # van 10 springen wat trillerig oogt.
+        self._cd_timer.setInterval(33)
         self._cd_timer.timeout.connect(self._refresh_countdown)
         if countdown_source is not None:
             self._cd_timer.start()
