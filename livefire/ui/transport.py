@@ -418,23 +418,27 @@ class TransportWidget(QWidget):
 
         if self._layout_variant == "c":
             # Centered countdown: voeg 'n eigen rij toe boven row1 met
-            # de countdown gecentreerd in groot lettertype. Lijkt op
-            # cinematic-A maar werkt voor elk theme.
-            # We hebben lbl_countdown al, hergebruiken 'm.
-            big_size = "72pt" if self._theme_id == "glass" else "60pt"
-            self.lbl_countdown.setStyleSheet(
-                f"color: {ACCENT}; font-size: {big_size}; font-weight: bold;"
+            # de countdown gecentreerd in groot lettertype. We maken 'n
+            # NIEUW QLabel hiervoor i.p.v. lbl_countdown te re-parenten —
+            # widget-re-parent zonder takeAt() laat Qt verward achter
+            # ('CreateDIBSection failed'-crash gezien op qlab/c).
+            from PyQt6.QtGui import QFont as _QFont
+            big_pt = 72 if self._theme_id == "glass" else 60
+            self._lbl_countdown_centered = QLabel("—:—")
+            self._lbl_countdown_centered.setAlignment(
+                Qt.AlignmentFlag.AlignCenter,
             )
-            # Re-parent: countdown uit z'n huidige parent halen.
-            old_parent = self.lbl_countdown.parent()
-            self.lbl_countdown.setParent(None)
-            # Eigen centered-row maken bovenin.
+            self._lbl_countdown_centered.setStyleSheet(
+                f"color: {ACCENT}; font-size: {big_pt}pt; font-weight: bold;"
+            )
+            self._lbl_countdown_centered.setText(self.lbl_countdown.text())
+            # Verberg de inline countdown — anders heb je 'm dubbel.
+            self.lbl_countdown.hide()
             centered_row = QHBoxLayout()
             centered_row.setContentsMargins(0, 0, 0, 0)
             centered_row.addStretch(1)
-            centered_row.addWidget(self.lbl_countdown)
+            centered_row.addWidget(self._lbl_countdown_centered)
             centered_row.addStretch(1)
-            # Insert vooraan de outer-VBox (vóór row1_widget).
             outer.insertLayout(0, centered_row)
             return
 
@@ -525,10 +529,15 @@ class TransportWidget(QWidget):
                 f'letter-spacing:1px;">NOW PLAYING</span><br>'
                 f'<span style="color:{TEXT_DIM};font-style:italic;">—</span>'
             )
+            if hasattr(self, "_lbl_countdown_centered"):
+                self._lbl_countdown_centered.setText("—:—")
             return
         name, seconds, is_countdown = info
         prefix = "" if is_countdown else "+"
-        self.lbl_countdown.setText(f"{prefix}{_fmt_time(seconds)}")
+        countdown_text = f"{prefix}{_fmt_time(seconds)}"
+        self.lbl_countdown.setText(countdown_text)
+        if hasattr(self, "_lbl_countdown_centered"):
+            self._lbl_countdown_centered.setText(countdown_text)
         self.lbl_elapsed.setText(
             _fmt_time(elapsed) if elapsed is not None else "—:—"
         )
