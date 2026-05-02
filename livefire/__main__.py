@@ -16,7 +16,7 @@ from .i18n import set_language
 
 
 _ICON_PATH = Path(__file__).parent / "resources" / "icon.png"
-_SPLASH_DURATION_S = 3.5
+_SPLASH_DURATION_S = 2.5
 
 # Singleton-key voor de QSharedMemory-segment. Versionering ingebakken
 # zodat een toekomstige format-bump niet botst met een oude instance
@@ -124,13 +124,23 @@ def main() -> int:
 
     # Splashscreen ná w.show() zodat 'ie boven de hoofd-UI verschijnt.
     # WindowStaysOnTopHint houdt 'm zichtbaar tijdens de _SPLASH_DURATION_S.
+    # Subclass zodat 'n klik ÉRGENS op de splash 'm vroeg dismiset.
     if _ICON_PATH.is_file():
-        splash = QSplashScreen(build_splash_pixmap(),
-                               Qt.WindowType.WindowStaysOnTopHint)
+        class _ClickToDismissSplash(QSplashScreen):
+            dismissed = False
+
+            def mousePressEvent(self, event):  # noqa: N802
+                self.dismissed = True
+                super().mousePressEvent(event)
+
+        splash = _ClickToDismissSplash(
+            build_splash_pixmap(), Qt.WindowType.WindowStaysOnTopHint,
+        )
         splash.show()
         app.processEvents()
         started = time.monotonic()
-        while time.monotonic() - started < _SPLASH_DURATION_S:
+        while (time.monotonic() - started < _SPLASH_DURATION_S
+                and not splash.dismissed):
             app.processEvents()
             time.sleep(0.03)
         splash.finish(w)
