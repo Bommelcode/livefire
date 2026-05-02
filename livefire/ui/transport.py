@@ -48,6 +48,9 @@ class TransportWidget(QWidget):
     # Operator wisselt de inspector-zichtbaarheid via de transport-knop.
     # MainWindow connect 'm aan een slot dat self.inspector.setVisible() doet.
     inspector_toggled = pyqtSignal(bool)
+    # Workspace-default 'auto-stop other audio on fire' toggle. MainWindow
+    # connect 'm aan een slot dat ws.auto_stop_others_on_fire muteert.
+    auto_stop_toggled = pyqtSignal(bool)
 
     def __init__(
         self,
@@ -86,30 +89,53 @@ class TransportWidget(QWidget):
             outer.setSpacing(4)
 
         # ---- ROW 1 — transport-balk (alle controls + countdown) --------
-        # Wrap in 'n widget met max-height = GO/Stop hoogte (80) zodat de
-        # rij nooit hoger wordt dan de primaire knoppen. Ook al rendert 'n
-        # font groter, de label clipt liever dan dat 't de header strekt.
+        # Cap-hoogte verwijderd zodat we onder GO/Stop een toggle kunnen
+        # plaatsen voor 'auto-stop other audio on fire'. De vrije hoogte
+        # gebruiken NOW PLAYING + REMAIN om groter te renderen.
         row1_widget = QWidget()
-        row1_widget.setMaximumHeight(80)
         row1 = QHBoxLayout(row1_widget)
         row1.setContentsMargins(0, 0, 0, 0)
         row1.setSpacing(8)
 
-        # Beide knoppen identieke fixed-width zodat ze visueel gelijk zijn.
+        # Linker-kolom: GO+Stop bovenin, auto-stop-toggle onderaan over
+        # de volle breedte van GO+Stop.
         BTN_W = 120
+        left_col = QVBoxLayout()
+        left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(2)
+        buttons_row = QHBoxLayout()
+        buttons_row.setContentsMargins(0, 0, 0, 0)
+        buttons_row.setSpacing(8)
         self.btn_go = QPushButton("GO")
         self.btn_go.setObjectName("goButton")
         self.btn_go.setToolTip("Start the cue at the playhead (Space)")
         self.btn_go.setFixedSize(BTN_W, 80)
         self.btn_go.clicked.connect(self.go_clicked.emit)
-        row1.addWidget(self.btn_go)
-
+        buttons_row.addWidget(self.btn_go)
         self.btn_stop = QPushButton("Stop All")
         self.btn_stop.setObjectName("stopButton")
         self.btn_stop.setToolTip("Stop all active cues immediately (Escape)")
         self.btn_stop.setFixedSize(BTN_W, 80)
         self.btn_stop.clicked.connect(self.stop_all_clicked.emit)
-        row1.addWidget(self.btn_stop)
+        buttons_row.addWidget(self.btn_stop)
+        left_col.addLayout(buttons_row)
+
+        # Auto-stop-other-audio toggle — workspace-default. Per-cue
+        # override staat op de Cue zelf (Inspector → Audio → On fire).
+        # Smaller, breedte == GO+Stop+spacing = 248 px.
+        self.btn_auto_stop = QPushButton("Stop prev: OFF")
+        self.btn_auto_stop.setCheckable(True)
+        self.btn_auto_stop.setObjectName("autoStopButton")
+        self.btn_auto_stop.setFixedHeight(28)
+        self.btn_auto_stop.setMinimumWidth(BTN_W * 2 + 8)
+        self.btn_auto_stop.setToolTip(
+            "When ON, firing a new audio cue first stops any audio cues "
+            "that are still playing. Per-cue override on the audio "
+            "inspector's 'On fire' dropdown. Saved per workspace."
+        )
+        self.btn_auto_stop.toggled.connect(self._on_auto_stop_toggled_btn)
+        left_col.addWidget(self.btn_auto_stop)
+        row1.addLayout(left_col)
 
         # Showtime + Inspector-toggle in een kleine vbox naast elkaar (twee
         # knoppen op enkele hoogte stapelen — past in de 80-px row).
@@ -373,13 +399,13 @@ class TransportWidget(QWidget):
         # __init__) zodat 'ie niet shrinks op smaller windows. Andere
         # themes scalen 22..32 pt mee met breedte.
         if self._theme_id not in ("cinematic", "qlab"):
-            timer_pt = _scale(22, 32)
+            timer_pt = _scale(32, 56)
             if timer_pt != self._timer_font_pt:
                 self._timer_font_pt = timer_pt
                 self._timer_font.setPointSize(timer_pt)
                 self.lbl_elapsed.setFont(self._timer_font)
                 self.lbl_countdown.setFont(self._timer_font)
-        info_pt = _scale(9, 13)
+        info_pt = _scale(12, 20)
         if info_pt != self._info_font_pt:
             self._info_font_pt = info_pt
             self._info_font.setPointSize(info_pt)
@@ -441,6 +467,21 @@ class TransportWidget(QWidget):
             centered_row.addStretch(1)
             outer.insertLayout(0, centered_row)
             return
+
+    def _on_auto_stop_toggled_btn(self, on: bool) -> None:
+        """Update knop-tekst en emit signaal naar MainWindow."""
+        self.btn_auto_stop.setText(f"Stop prev: {'ON' if on else 'OFF'}")
+        self.auto_stop_toggled.emit(on)
+
+    def set_auto_stop(self, on: bool) -> None:
+        """MainWindow roept dit aan zodra 'n nieuwe workspace geladen is
+        zodat de knop-state met ws.auto_stop_others_on_fire synchroon
+        loopt zonder een second toggled-signal te triggeren."""
+        if self.btn_auto_stop.isChecked() != on:
+            self.btn_auto_stop.blockSignals(True)
+            self.btn_auto_stop.setChecked(on)
+            self.btn_auto_stop.blockSignals(False)
+        self.btn_auto_stop.setText(f"Stop prev: {'ON' if on else 'OFF'}")
 
     def set_cue_toolbar(self, widget: QWidget) -> None:
         """MainWindow propt zijn cue-toolbar in de slot onder Showtime.

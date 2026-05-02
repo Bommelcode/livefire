@@ -241,6 +241,7 @@ class MainWindow(QMainWindow):
         self.transport.inspector_toggled.connect(
             lambda visible: self.inspector.setVisible(visible)
         )
+        self.transport.auto_stop_toggled.connect(self._on_auto_stop_toggled)
         vroot.addWidget(self.transport)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -467,13 +468,14 @@ class MainWindow(QMainWindow):
         self._sync_title()
         if hasattr(self, "autosave"):
             self.autosave.attach_workspace(self.ws)
-        # Sync de Transport-menu auto-stop-toggle met de workspace-state.
+        # Sync de Transport-toggle (menu + button) met de workspace-state.
+        on = bool(getattr(self.ws, "auto_stop_others_on_fire", False))
         if hasattr(self, "act_auto_stop"):
             self.act_auto_stop.blockSignals(True)
-            self.act_auto_stop.setChecked(
-                getattr(self.ws, "auto_stop_others_on_fire", False),
-            )
+            self.act_auto_stop.setChecked(on)
             self.act_auto_stop.blockSignals(False)
+        if hasattr(self, "transport"):
+            self.transport.set_auto_stop(on)
         # Lege snapshot pushen zodat Companion's fire-button-labels leeg
         # gaan i.p.v. te blijven hangen op de cues van de vorige workspace.
         self._broadcast_cuelist_snapshot()
@@ -524,13 +526,14 @@ class MainWindow(QMainWindow):
         self._sync_title()
         if hasattr(self, "autosave"):
             self.autosave.attach_workspace(self.ws)
-        # Sync de Transport-menu auto-stop-toggle met de workspace-state.
+        # Sync de Transport-toggle (menu + button) met de workspace-state.
+        on = bool(getattr(self.ws, "auto_stop_others_on_fire", False))
         if hasattr(self, "act_auto_stop"):
             self.act_auto_stop.blockSignals(True)
-            self.act_auto_stop.setChecked(
-                getattr(self.ws, "auto_stop_others_on_fire", False),
-            )
+            self.act_auto_stop.setChecked(on)
             self.act_auto_stop.blockSignals(False)
+        if hasattr(self, "transport"):
+            self.transport.set_auto_stop(on)
         # Companion / Stream Deck moet weten dat de cuelist veranderd is —
         # anders blijven fire-buttons leeg tot de operator een cue edit.
         self._broadcast_cuelist_snapshot()
@@ -570,13 +573,14 @@ class MainWindow(QMainWindow):
         # naast het oude (of in de untitled-folder).
         if hasattr(self, "autosave"):
             self.autosave.attach_workspace(self.ws)
-        # Sync de Transport-menu auto-stop-toggle met de workspace-state.
+        # Sync de Transport-toggle (menu + button) met de workspace-state.
+        on = bool(getattr(self.ws, "auto_stop_others_on_fire", False))
         if hasattr(self, "act_auto_stop"):
             self.act_auto_stop.blockSignals(True)
-            self.act_auto_stop.setChecked(
-                getattr(self.ws, "auto_stop_others_on_fire", False),
-            )
+            self.act_auto_stop.setChecked(on)
             self.act_auto_stop.blockSignals(False)
+        if hasattr(self, "transport"):
+            self.transport.set_auto_stop(on)
             self.autosave.clear_for_current()
         self._sync_title()
 
@@ -1221,10 +1225,20 @@ class MainWindow(QMainWindow):
     def _on_auto_stop_toggled(self, on: bool) -> None:
         """Toggle de workspace-default 'auto-stop andere audio bij fire'.
         Per-cue override (Cue.stop_others_mode) wint hierop. Wordt mee-
-        gesaved in de .livefire."""
+        gesaved in de .livefire. Sync menu-action + transport-knop zodat
+        beide de juiste state tonen ongeacht via welke route de toggle
+        binnenkwam."""
         self.ws.auto_stop_others_on_fire = bool(on)
         self.ws.dirty = True
         self._sync_title()
+        # Cross-sync zonder loop: blockSignals voorkomt dat we onszelf
+        # herhaaldelijk recursief triggeren.
+        if hasattr(self, "act_auto_stop") and self.act_auto_stop.isChecked() != on:
+            self.act_auto_stop.blockSignals(True)
+            self.act_auto_stop.setChecked(on)
+            self.act_auto_stop.blockSignals(False)
+        if hasattr(self, "transport"):
+            self.transport.set_auto_stop(on)
 
     # ---- theme picker -----------------------------------------------------
 
@@ -1394,13 +1408,14 @@ class MainWindow(QMainWindow):
         self._sync_title()
         if hasattr(self, "autosave"):
             self.autosave.attach_workspace(self.ws)
-        # Sync de Transport-menu auto-stop-toggle met de workspace-state.
+        # Sync de Transport-toggle (menu + button) met de workspace-state.
+        on = bool(getattr(self.ws, "auto_stop_others_on_fire", False))
         if hasattr(self, "act_auto_stop"):
             self.act_auto_stop.blockSignals(True)
-            self.act_auto_stop.setChecked(
-                getattr(self.ws, "auto_stop_others_on_fire", False),
-            )
+            self.act_auto_stop.setChecked(on)
             self.act_auto_stop.blockSignals(False)
+        if hasattr(self, "transport"):
+            self.transport.set_auto_stop(on)
         # Verwijder het orphan-bestand zodat we 'm bij de volgende
         # start niet opnieuw aanbieden.
         try:
