@@ -400,14 +400,23 @@ class TransportWidget(QWidget):
 
         # Cinematic/QLab gebruiken een static 96pt via stylesheet (zie
         # __init__) zodat 'ie niet shrinks op smaller windows. Andere
-        # themes scalen 22..32 pt mee met breedte.
+        # themes scalen 40..72 pt mee met breedte. We gebruiken
+        # per-widget setStyleSheet met expliciete font-size i.p.v.
+        # setFont() omdat de globale QSS-regel
+        # `QWidget { font-size: 9pt; }` setFont silent overrides voor
+        # QLabel — de stylesheet wint per Qt's regelhiërarchie.
         if self._theme_id not in ("cinematic", "qlab"):
             timer_pt = _scale(40, 72)
             if timer_pt != self._timer_font_pt:
                 self._timer_font_pt = timer_pt
-                self._timer_font.setPointSize(timer_pt)
-                self.lbl_elapsed.setFont(self._timer_font)
-                self.lbl_countdown.setFont(self._timer_font)
+                self.lbl_countdown.setStyleSheet(
+                    f"color: {ACCENT}; font-size: {timer_pt}pt; "
+                    f"font-weight: bold; font-family: Consolas;"
+                )
+                self.lbl_elapsed.setStyleSheet(
+                    f"color: {OK}; font-size: {timer_pt}pt; "
+                    f"font-weight: bold; font-family: Consolas;"
+                )
         info_pt = _scale(12, 20)
         if info_pt != self._info_font_pt:
             self._info_font_pt = info_pt
