@@ -406,9 +406,10 @@ class PlaybackController(QObject):
             # QLab-stijl "stop others on fire": resolve workspace-default
             # + per-cue override. Stoppen we andere AUDIO-cues vóórdat we
             # deze nieuwe starten? Video/image/dmx blijven onaangeroerd —
-            # die hebben hun eigen scope.
+            # die hebben hun eigen scope. Stoppen gaat met 'n korte
+            # crossfade (200 ms) zodat 't niet als 'n harde knip klinkt.
             if self._should_stop_others(cue):
-                self.audio.stop_all()
+                self.audio.stop_all(fade_out=0.2)
             ok = self.audio.play_file(
                 cue_id=cue.id,
                 file_path=cue.file_path,

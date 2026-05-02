@@ -507,7 +507,19 @@ class AudioEngine:
         if src is not None:
             src.stop()
 
-    def stop_all(self) -> None:
+    def stop_all(self, fade_out: float = 0.0) -> None:
+        """Stop alle lopende audio-cues. Met fade_out > 0 fade ze
+        eerst uit en stoppen daarna — geeft een natuurlijke crossfade
+        wanneer 'auto-stop other audio on fire' triggert. fade_out=0
+        is de oude harde stop (Stop All / panic)."""
+        if fade_out > 0:
+            with self._lock:
+                src_ids = list(self._sources.keys())
+            # apply_fade laat de source in de mixer staan — overlap met
+            # een nieuwe cue is dan een natuurlijke crossfade.
+            for cid in src_ids:
+                self.stop_cue(cid, fade_out=fade_out)
+            return
         with self._lock:
             sources = list(self._sources.values())
             self._sources.clear()
