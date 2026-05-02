@@ -648,7 +648,11 @@ class TransportWidget(QWidget):
                 self._lbl_countdown_centered.setText("—:—")
             return
         name, seconds, is_countdown = info
-        prefix = "" if is_countdown else "+"
+        # Minteken voor count-down (de meest voorkomende staat — telt af
+        # naar 't einde van de cue), plus-teken bij count-up (oneindige
+        # loop, telt op vanaf 0). De polariteit maakt 'n oogopslag-
+        # leesbaar verschil tussen "nog 1:34 te gaan" vs "+1:34 al bezig".
+        prefix = "-" if is_countdown else "+"
         countdown_text = f"{prefix}{_fmt_time(seconds)}"
         self.lbl_countdown.setText(countdown_text)
         if hasattr(self, "_lbl_countdown_centered"):
