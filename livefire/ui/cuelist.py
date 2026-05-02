@@ -89,6 +89,8 @@ class _ContinueDelegate(_CueRowDelegate):
                      ContinueMode.AUTO_CONTINUE,
                      ContinueMode.AUTO_FOLLOW):
             cb.addItem(ContinueMode.label(mode), mode)
+        # Bredere popup zodat volle continue-mode-labels passen.
+        cb.view().setMinimumWidth(220)
         # Stijl het editor-vlak met de cue-kleur. We doen 't op DRIE
         # manieren tegelijk omdat Qt-combobox styling notoir koppig is:
         # 1) Hoog-specifieke ID-selector (#continueEditor) overrult de
@@ -225,6 +227,10 @@ class _StopOthersDelegate(_CueRowDelegate):
         cb.setObjectName("stopOthersEditor")
         for m in (StopOthersMode.INHERIT, StopOthersMode.STOP, StopOthersMode.KEEP):
             cb.addItem(StopOthersMode.label(m), m)
+        # Forceer 'n bredere popup-list zodat de volle labels passen
+        # (cell-breedte cap't 'm anders op ~80 px en dan zie je alleen
+        # "Stop other audi…").
+        cb.view().setMinimumWidth(280)
         # Hergebruik de cue-kleur-styling van de Continue-delegate.
         if cue.color:
             base = QColor(cue.color)
