@@ -232,7 +232,10 @@ class TransportWidget(QWidget):
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred,
         )
         names_col.addWidget(self.lbl_countdown_name)
-        row1.addLayout(names_col, 3)
+        # Names_col stretch=1 (was 3) — geeft de timer-kolom rechts meer
+        # ruimte. Anders pakte names alle excess en werd REMAIN buiten
+        # beeld geduwd op een normaal venster.
+        row1.addLayout(names_col, 1)
 
         sep_next_now = QFrame()
         sep_next_now.setFrameShape(QFrame.Shape.VLine)
@@ -248,7 +251,10 @@ class TransportWidget(QWidget):
         self._timer_font.setPointSize(self._timer_font_pt)
         self._timer_font.setBold(True)
 
-        TIMER_MIN_W = 140
+        # Min-width per timer-label. Bij 72pt Consolas Bold is "00:00"
+        # ~180 px breed; lager dan dit raakt de tekst clipped of de
+        # rechter-label (REMAIN) buiten beeld op smal venster.
+        TIMER_MIN_W = 200
         # REMAIN — backwards-compat alias 'lbl_countdown'.
         self.lbl_countdown = QLabel("—:—")
         self.lbl_countdown.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -304,7 +310,7 @@ class TransportWidget(QWidget):
             timers_col.setSpacing(16)
             timers_col.addWidget(self.lbl_elapsed)
             timers_col.addWidget(self.lbl_countdown)
-            row1.addLayout(timers_col, 1)
+            row1.addLayout(timers_col, 2)
             outer.addWidget(row1_widget)
 
         # ---- ROW 2 — cue-toolbar over volle breedte --------------------
