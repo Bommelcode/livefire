@@ -128,6 +128,30 @@ class TransportWidget(QWidget):
         self.btn_auto_stop.setObjectName("autoStopButton")
         self.btn_auto_stop.setFixedHeight(28)
         self.btn_auto_stop.setMinimumWidth(BTN_W * 2 + 8)
+        # Visueel verschil OFF (gedimde grey) vs ON (oranje accent +
+        # witte vette tekst) — maakt op één blik duidelijk of de mode
+        # actief is. Inline stylesheet ipv globale QSS zodat 'ie meekomt
+        # ongeacht 't actieve theme.
+        self.btn_auto_stop.setStyleSheet(
+            "QPushButton#autoStopButton {"
+            "  background: #2a2a2a;"
+            "  color: #888;"
+            "  border: 1px solid #3a3a3a;"
+            "  border-radius: 3px;"
+            "}"
+            "QPushButton#autoStopButton:checked {"
+            "  background: #d35400;"
+            "  color: white;"
+            "  font-weight: bold;"
+            "  border: 1px solid #e67e22;"
+            "}"
+            "QPushButton#autoStopButton:hover {"
+            "  background: #353535;"
+            "}"
+            "QPushButton#autoStopButton:checked:hover {"
+            "  background: #e67e22;"
+            "}"
+        )
         self.btn_auto_stop.setToolTip(
             "When ON, firing a new audio cue first stops any audio cues "
             "that are still playing. Per-cue override on the audio "
