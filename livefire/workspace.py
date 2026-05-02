@@ -19,6 +19,11 @@ class Workspace:
     name: str = "Untitled"
     path: Path | None = None
     dirty: bool = False
+    # Workspace-default: stop alle al-spelende AUDIO-cues zodra 'n nieuwe
+    # audio-cue fire't. QLab-stijl convenience voor sting/jingle-shows
+    # waar je nooit meerdere streams tegelijk wil. Per-cue override via
+    # Cue.stop_others_mode (Cue.STOP_OTHERS_INHERIT/STOP/KEEP).
+    auto_stop_others_on_fire: bool = False
 
     # ---- cue-beheer --------------------------------------------------------
 
@@ -145,13 +150,19 @@ class Workspace:
             "format_version": WORKSPACE_FORMAT_VERSION,
             "app_version": APP_VERSION,
             "name": self.name,
+            "auto_stop_others_on_fire": self.auto_stop_others_on_fire,
             "cues": [c.to_dict() for c in self.cues],
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Workspace":
         data = _migrate(data)
-        ws = cls(name=data.get("name", "Untitled"))
+        ws = cls(
+            name=data.get("name", "Untitled"),
+            auto_stop_others_on_fire=bool(
+                data.get("auto_stop_others_on_fire", False),
+            ),
+        )
         for cd in data.get("cues", []):
             ws.cues.append(Cue.from_dict(cd))
         return ws

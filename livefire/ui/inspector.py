@@ -317,12 +317,23 @@ class InspectorWidget(QWidget):
             "Fade-out time at the end of the cue. With AUTO_FOLLOW the next cue "
             "starts simultaneously with the fade-out — giving a natural crossfade."
         )
+        # Stop-others-mode: per-cue override op de workspace-default.
+        self.cb_stop_others = QComboBox()
+        from ..cues import StopOthersMode
+        for m in (StopOthersMode.INHERIT, StopOthersMode.STOP, StopOthersMode.KEEP):
+            self.cb_stop_others.addItem(StopOthersMode.label(m), m)
+        self.cb_stop_others.setToolTip(
+            "Whether other audio cues should stop when this one fires. "
+            "Inherit = follow the workspace setting (Edit → Preferences). "
+            "Stop = always stop others. Keep = always keep others playing."
+        )
         al.addRow("Volume", self.sp_volume)
         al.addRow("Loops (0 = ∞)", self.sp_loops)
         al.addRow("Start offset", self.sp_start)
         al.addRow("End offset", self.sp_end)
         al.addRow("Fade-in", self.sp_fade_in)
         al.addRow("Fade-out", self.sp_fade_out)
+        al.addRow("On fire", self.cb_stop_others)
         lay.addWidget(self.grp_audio)
 
         # ---- Video ---------------------------------------------------------
@@ -710,6 +721,7 @@ class InspectorWidget(QWidget):
             self.sp_dur:         ("duration",           lambda: self.sp_dur.value()),
             self.sp_post:        ("post_wait",          lambda: self.sp_post.value()),
             self.cb_continue:    ("continue_mode",      lambda: self.cb_continue.currentData()),
+            self.cb_stop_others: ("stop_others_mode",   lambda: self.cb_stop_others.currentData()),
             self.ed_path:        ("file_path",          lambda: self.ed_path.text()),
             self.sp_volume:      ("volume_db",          lambda: self.sp_volume.value()),
             self.sp_loops:       ("loops",              lambda: self.sp_loops.value()),
@@ -787,6 +799,7 @@ class InspectorWidget(QWidget):
         self.sp_loops.valueChanged.connect(self._on_any_change)
         self.cb_type.currentIndexChanged.connect(self._on_type_change)
         self.cb_continue.currentIndexChanged.connect(self._on_any_change)
+        self.cb_stop_others.currentIndexChanged.connect(self._on_any_change)
         self.cb_target.currentIndexChanged.connect(self._on_any_change)
         self.cb_color.color_changed.connect(self._on_any_change)
         self.cb_video_screen.currentIndexChanged.connect(self._on_any_change)
@@ -905,6 +918,11 @@ class InspectorWidget(QWidget):
         idx = self.cb_continue.findData(cue.continue_mode)
         if idx >= 0:
             self.cb_continue.setCurrentIndex(idx)
+        idx_so = self.cb_stop_others.findData(
+            getattr(cue, "stop_others_mode", 0),
+        )
+        if idx_so >= 0:
+            self.cb_stop_others.setCurrentIndex(idx_so)
 
         self.ed_path.setText(cue.file_path if not multi else "")
         self.sp_volume.setValue(cue.volume_db)

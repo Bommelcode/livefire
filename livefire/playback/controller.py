@@ -403,6 +403,12 @@ class PlaybackController(QObject):
 
         t = cue.cue_type
         if t == CueType.AUDIO:
+            # QLab-stijl "stop others on fire": resolve workspace-default
+            # + per-cue override. Stoppen we andere AUDIO-cues vóórdat we
+            # deze nieuwe starten? Video/image/dmx blijven onaangeroerd —
+            # die hebben hun eigen scope.
+            if self._should_stop_others(cue):
+                self.audio.stop_all()
             ok = self.audio.play_file(
                 cue_id=cue.id,
                 file_path=cue.file_path,
@@ -583,6 +589,21 @@ class PlaybackController(QObject):
     # default 1000-recursie-limit uitkomen. Boven deze drempel breken
     # we 'm via QTimer.singleShot zodat de event-loop ertussen ademt.
     _AUTO_CONTINUE_RECURSION_CAP = 50
+
+    def _should_stop_others(self, cue: Cue) -> bool:
+        """Resolve de stop-others-keten: per-cue override > workspace-
+        default. Zie Workspace.auto_stop_others_on_fire +
+        Cue.stop_others_mode (StopOthersMode.INHERIT/STOP/KEEP)."""
+        from ..cues import StopOthersMode
+        mode = getattr(cue, "stop_others_mode", StopOthersMode.INHERIT)
+        if mode == StopOthersMode.STOP:
+            return True
+        if mode == StopOthersMode.KEEP:
+            return False
+        # Inherit: kijk naar workspace-default.
+        return bool(getattr(
+            self.workspace, "auto_stop_others_on_fire", False,
+        ))
 
     def _advance_and_go(self) -> None:
         """Start de volgende cue in de lijst (voor auto-continue/auto-follow)."""

@@ -72,6 +72,27 @@ class ContinueMode:
         return t(ContinueMode.KEYS.get(mode, "continue.do_not"))
 
 
+class StopOthersMode:
+    """Per-cue override voor de "stop andere audio bij fire"-flag.
+    Werkt bovenop de workspace-default `auto_stop_others_on_fire`."""
+
+    INHERIT = 0   # volg de workspace-default
+    STOP = 1      # stop andere audio (ook als workspace 't uit heeft)
+    KEEP = 2      # laat anderen doorspelen (ook als workspace 't aan heeft)
+
+    LABELS = {
+        INHERIT: "Inherit from workspace",
+        STOP: "Stop other audio when I fire",
+        KEEP: "Keep other audio playing",
+    }
+
+    @staticmethod
+    def label(mode: int) -> str:
+        return StopOthersMode.LABELS.get(
+            mode, StopOthersMode.LABELS[StopOthersMode.INHERIT],
+        )
+
+
 @dataclass
 class Cue:
     """Platte cue-dataclass. Alle type-specifieke velden staan hier zodat
@@ -84,6 +105,11 @@ class Cue:
     name: str = ""
     notes: str = ""
     color: str = ""  # hex, leeg = default
+    # Stop-others-mode bij vuren (audio-cues): 0 = inherit van workspace,
+    # 1 = altijd stoppen (zelfs als workspace 't uit heeft staan), 2 =
+    # nooit stoppen (zelfs als workspace 't aan heeft). Zie
+    # PlaybackController._should_stop_others.
+    stop_others_mode: int = 0
 
     # Timing
     pre_wait: float = 0.0
