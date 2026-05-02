@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QStyledItemDelegate, QStyle, QStyleOptionViewItem, QComboBox, QMenu,
 )
 
-from ..cues import Cue, CueType, ContinueMode
+from ..cues import Cue, CueType, ContinueMode, StopOthersMode
 from ..i18n import t
 from ..workspace import Workspace
 from .style import STATE_COLORS, ACCENT, ACCENT_ALT, TEXT_DIM, tint_for_row
@@ -18,11 +18,27 @@ from .style import STATE_COLORS, ACCENT, ACCENT_ALT, TEXT_DIM, tint_for_row
 
 def _columns() -> list[str]:
     return [t("col.nr"), t("col.type"), t("col.name"),
-            t("col.duration"), t("col.continue"), t("col.state")]
+            t("col.duration"), t("col.continue"), "On fire", t("col.state")]
 
 
 COLUMNS = _columns()
 _COL_CONTINUE = 4
+_COL_STOP_OTHERS = 5
+_COL_STATE = 6
+
+
+def _stop_others_short_label(cue: Cue) -> str:
+    """Korte label voor de On-fire-cel in de cuelist. We tonen 'm enkel
+    op AUDIO-cues (de instelling is alleen relevant voor audio), anders
+    leeg zodat 't visueel rustig blijft."""
+    if cue.cue_type != CueType.AUDIO:
+        return ""
+    mode = getattr(cue, "stop_others_mode", StopOthersMode.INHERIT)
+    return {
+        StopOthersMode.INHERIT: "—",
+        StopOthersMode.STOP: "Stop others",
+        StopOthersMode.KEEP: "Keep others",
+    }.get(mode, "—")
 
 
 class _CueRowDelegate(QStyledItemDelegate):
@@ -190,6 +206,99 @@ class _ContinueDelegate(_CueRowDelegate):
         editor.setGeometry(option.rect)
 
 
+class _StopOthersDelegate(_CueRowDelegate):
+    """Inline-editor voor de On-fire-kolom: opent een QComboBox met de
+    drie StopOthersMode-keuzes — alleen voor AUDIO-cues, andere types
+    krijgen geen editor (hun cell blijft leeg). Schrijft via de undo-
+    stack zoals de Continue-delegate."""
+
+    def createEditor(self, parent, option, index):
+        tree = self.parent()
+        item = tree.itemFromIndex(index) if tree is not None else None
+        cue_id = (
+            item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+        )
+        cue = tree.workspace.find(cue_id) if cue_id and tree is not None else None
+        if cue is None or cue.cue_type != CueType.AUDIO:
+            return None  # niet-audio = geen editor
+        cb = QComboBox(parent)
+        cb.setObjectName("stopOthersEditor")
+        for m in (StopOthersMode.INHERIT, StopOthersMode.STOP, StopOthersMode.KEEP):
+            cb.addItem(StopOthersMode.label(m), m)
+        # Hergebruik de cue-kleur-styling van de Continue-delegate.
+        if cue.color:
+            base = QColor(cue.color)
+            bg = base.darker(160)
+            cb.setStyleSheet(
+                f"QComboBox#stopOthersEditor {{ "
+                f"  background-color: {bg.name()}; "
+                f"  color: white; "
+                f"  border: 1px solid {base.name()}; "
+                f"  padding: 1px 6px; "
+                f"}} "
+                f"QComboBox#stopOthersEditor QAbstractItemView {{ "
+                f"  background-color: {bg.name()}; "
+                f"  color: white; "
+                f"  selection-background-color: {base.name()}; "
+                f"  selection-color: white; "
+                f"}}"
+            )
+        return cb
+
+    def setEditorData(self, editor: QComboBox, index) -> None:
+        tree = self.parent()
+        item = tree.itemFromIndex(index)
+        if item is None:
+            return
+        cue_id = item.data(0, Qt.ItemDataRole.UserRole)
+        cue = tree.workspace.find(cue_id)
+        if cue is None:
+            return
+        current = getattr(cue, "stop_others_mode", StopOthersMode.INHERIT)
+        for i in range(editor.count()):
+            if editor.itemData(i) == current:
+                editor.setCurrentIndex(i)
+                editor.showPopup()
+                return
+
+    def setModelData(self, editor: QComboBox, model, index) -> None:
+        tree = self.parent()
+        item = tree.itemFromIndex(index)
+        if item is None:
+            return
+        clicked_cue_id = item.data(0, Qt.ItemDataRole.UserRole)
+        new_mode = int(editor.currentData())
+
+        # Multi-select: als de geklikte cue in 'n grotere selectie zit,
+        # pas op alle audio-cues in de selectie toe. Niet-audio cues
+        # filteren we eruit.
+        selected_ids = {c.id for c in tree.selected_cues()}
+        target_ids = selected_ids if clicked_cue_id in selected_ids else {clicked_cue_id}
+        target_ids = {
+            cid for cid in target_ids
+            if (cue := tree.workspace.find(cid)) is not None
+            and cue.cue_type == CueType.AUDIO
+            and getattr(cue, "stop_others_mode", StopOthersMode.INHERIT) != new_mode
+        }
+        if not target_ids:
+            return
+
+        sink = getattr(tree, "command_sink", None)
+        if sink is not None:
+            sink.push_set_field(list(target_ids), "stop_others_mode", new_mode)
+        else:
+            for cid in target_ids:
+                cue = tree.workspace.find(cid)
+                if cue is not None:
+                    cue.stop_others_mode = new_mode
+                    tree.update_cue_display(cid)
+                    tree.cue_field_edited.emit(cid)
+            tree.workspace.dirty = True
+
+    def updateEditorGeometry(self, editor, option, index) -> None:
+        editor.setGeometry(option.rect)
+
+
 def _fmt_duration(sec: float) -> str:
     if sec <= 0:
         return "—"
@@ -228,6 +337,7 @@ class CueListWidget(QTreeWidget):
             "Cue name — free text field",
             "Action duration (for Audio: set duration or — = play to end of file)",
             "Continue mode: Do Not Continue / Auto-Continue / Auto-Follow",
+            "On fire: stop other audio (Inherit / Stop / Keep). Audio cues only.",
             "Runtime state: idle / running / finished",
         ]
         for i, tip in enumerate(_column_tooltips):
@@ -265,6 +375,7 @@ class CueListWidget(QTreeWidget):
         # alleen voor die kolom, dus de cue-color-tint blijft elders
         # werken.
         self.setItemDelegateForColumn(_COL_CONTINUE, _ContinueDelegate(self))
+        self.setItemDelegateForColumn(_COL_STOP_OTHERS, _StopOthersDelegate(self))
 
         self.itemSelectionChanged.connect(self._on_selection)
         self.itemDoubleClicked.connect(self._on_double_click)
@@ -331,6 +442,7 @@ class CueListWidget(QTreeWidget):
             cue.name or "(untitled)",
             _fmt_duration(dur_value),
             ContinueMode.label(cue.continue_mode),
+            _stop_others_short_label(cue),
             t(f"state.{cue.state}"),
         ])
         item.setData(0, Qt.ItemDataRole.UserRole, cue.id)
@@ -340,7 +452,7 @@ class CueListWidget(QTreeWidget):
         item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
         # Kleur status-cel
         color = STATE_COLORS.get(cue.state, QColor("#888"))
-        item.setForeground(5, QBrush(color))
+        item.setForeground(_COL_STATE, QBrush(color))
         # Cue-color tag: volle kleur als balk op nummer-kolom, lichte tint over
         # de rest zodat de regel direct als gekleurde cue herkenbaar is.
         if cue.color:
@@ -359,9 +471,9 @@ class CueListWidget(QTreeWidget):
         cue = self.workspace.find(cue_id)
         if cue is None:
             return
-        item.setText(5, t(f"state.{cue.state}"))
+        item.setText(_COL_STATE, t(f"state.{cue.state}"))
         color = STATE_COLORS.get(cue.state, QColor("#888"))
-        item.setForeground(5, QBrush(color))
+        item.setForeground(_COL_STATE, QBrush(color))
 
     def set_readonly(self, on: bool) -> None:
         """Visueel + functioneel readonly maken tijdens showtime-lock.
@@ -401,9 +513,10 @@ class CueListWidget(QTreeWidget):
         item.setText(2, cue.name or "(untitled)")
         item.setText(3, _fmt_duration(dur_value))
         item.setText(4, ContinueMode.label(cue.continue_mode))
-        item.setText(5, t(f"state.{cue.state}"))
+        item.setText(_COL_STOP_OTHERS, _stop_others_short_label(cue))
+        item.setText(_COL_STATE, t(f"state.{cue.state}"))
         state_color = STATE_COLORS.get(cue.state, QColor("#888"))
-        item.setForeground(5, QBrush(state_color))
+        item.setForeground(_COL_STATE, QBrush(state_color))
         # Kleur-balk bijwerken
         if cue.color:
             full = QBrush(QColor(cue.color))
@@ -522,7 +635,7 @@ class CueListWidget(QTreeWidget):
                 state_color = STATE_COLORS.get(
                     cue.state if cue else "idle", QColor("#ffffff")
                 )
-                item.setForeground(5, QBrush(state_color))
+                item.setForeground(_COL_STATE, QBrush(state_color))
             else:
                 # Reset naar cue-color-tag (zelfde logica als _make_item).
                 if cue is not None and cue.color:
@@ -544,7 +657,7 @@ class CueListWidget(QTreeWidget):
                 state_color = STATE_COLORS.get(
                     cue.state if cue else "idle", QColor("#888")
                 )
-                item.setForeground(5, QBrush(state_color))
+                item.setForeground(_COL_STATE, QBrush(state_color))
 
     # ---- events ------------------------------------------------------------
 
@@ -628,7 +741,7 @@ class CueListWidget(QTreeWidget):
         if getattr(self, "_readonly", False):
             return
         idx = self.indexAt(e.position().toPoint())
-        if idx.isValid() and idx.column() == _COL_CONTINUE:
+        if idx.isValid() and idx.column() in (_COL_CONTINUE, _COL_STOP_OTHERS):
             self.edit(idx)
 
     def keyPressEvent(self, e):
